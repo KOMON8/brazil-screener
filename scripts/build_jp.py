@@ -20,7 +20,8 @@ import screener_core as core
 from build_data import r2, fetch_fundamentals, BARS
 
 OUT_DIR = os.path.join(HERE, "..", "site", "data")
-LIST_URL = "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls"
+LIST_URLS = ("https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx",
+             "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls")
 LIST_CACHE = os.path.join(HERE, "jp_list.json")
 FUND_CACHE_JP = os.path.join(HERE, "fund_cache_jp.json")
 MIN_VAL_OKU = float(os.environ.get("MIN_VAL_OKU", "1"))     # 対象にする 20日平均売買代金の下限（億円）
@@ -30,20 +31,22 @@ FIN = ("銀行業", "保険業", "証券、商品先物取引業", "その他金
 
 def load_list():
     """JPX の上場銘柄一覧（取れなければ前回の一覧）"""
-    try:
-        import urllib.request
-        req = urllib.request.Request(LIST_URL, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            df = pd.read_excel(io.BytesIO(r.read()), dtype=str)
-        df = df[df["市場・商品区分"].isin(MARKETS)]
-        out = {str(row["コード"]).strip(): {"name": row["銘柄名"], "sector": row.get("33業種区分", "")}
-               for _, row in df.iterrows()}
-        if len(out) > 1000:
-            with open(LIST_CACHE, "w", encoding="utf-8") as f:
-                json.dump(out, f, ensure_ascii=False)
-            return out
-    except Exception as e:
-        print("JPX の一覧を取得できませんでした:", e)
+    import urllib.request
+    for url in LIST_URLS:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                df = pd.read_excel(io.BytesIO(r.read()), dtype=str)
+            df = df[df["市場・商品区分"].isin(MARKETS)]
+            out = {str(row["コード"]).strip(): {"name": row["銘柄名"], "sector": row.get("33業種区分", "")}
+                   for _, row in df.iterrows()}
+            print(f"JPX の一覧: {url} → {len(out)} 銘柄")
+            if len(out) > 1000:
+                with open(LIST_CACHE, "w", encoding="utf-8") as f:
+                    json.dump(out, f, ensure_ascii=False)
+                return out
+        except Exception as e:
+            print("JPX の一覧を取得できませんでした:", url, e)
     if os.path.exists(LIST_CACHE):
         with open(LIST_CACHE, encoding="utf-8") as f:
             print("前回の一覧を使います")

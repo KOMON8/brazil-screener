@@ -40,7 +40,7 @@ jobs:
         run: python scripts/build_data.py
       - name: データを作る（日本株）
         continue-on-error: true      # 日本株で失敗しても、ブラジル株のページは公開する
-        run: python scripts/build_jp.py
+        run: mkdir -p site/data && python -u scripts/build_jp.py 2>&1 | tee site/data/jp_log.txt
       - name: 財務データの記録を保存
         if: always()
         uses: actions/cache/save@v4
