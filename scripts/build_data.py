@@ -82,6 +82,9 @@ def main():
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     print(f"書き出し: {path}（{os.path.getsize(path) / 1e6:.1f} MB、{len(stocks)} 銘柄）")
+    with open(os.path.join(OUT_DIR, "meta.json"), "w", encoding="utf-8") as f:   # 動作確認用
+        json.dump({"updated": out["updated"], "tickers": len(codes), "stocks": len(stocks),
+                   "last_daily": dates["d"][-1], "size_mb": round(os.path.getsize(path) / 1e6, 2)}, f, ensure_ascii=False)
 
 
 if __name__ == "__main__":
