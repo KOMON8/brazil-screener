@@ -30,6 +30,49 @@ def r2(x):
         return None
 
 
+FUND_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fund_cache.json")
+FUND_DAYS = 7                      # 財務の数字はこの日数ごとに取り直す（決算は3か月ごとなので週1回で十分）
+
+
+def fetch_fundamentals(codes):
+    """ROE などの財務の数字（ヤフーの銘柄情報）。前回の記録が新しい銘柄は取り直さない"""
+    import time
+    import yfinance as yf
+    today = dt.date.today()
+    cache = {}
+    if os.path.exists(FUND_CACHE):
+        try:
+            with open(FUND_CACHE, encoding="utf-8") as f:
+                cache = json.load(f)
+        except Exception:
+            cache = {}
+    todo = [c for c in codes
+            if c not in cache or "roa" not in cache[c] or (today - dt.date.fromisoformat(cache[c].get("checked", "2000-01-01"))).days >= FUND_DAYS]
+    print(f"財務の数字を取得中（{len(todo)} 銘柄、残りは記録を使う）...")
+    for i, c in enumerate(todo):
+        rec = {"checked": today.isoformat()}
+        try:
+            info = yf.Ticker(c + ".SA").info
+            roe = info.get("returnOnEquity")
+            rec["roe"] = r2(roe * 100) if isinstance(roe, (int, float)) else None
+            roa = info.get("returnOnAssets")
+            rec["roa"] = r2(roa * 100) if isinstance(roa, (int, float)) else None
+            rec["sector"] = info.get("sector") or ""
+        except Exception as e:
+            rec["err"] = str(e)[:80]
+            rec["checked"] = (today - dt.timedelta(days=FUND_DAYS)).isoformat()   # 失敗したら次回また取る
+        cache[c] = rec
+        time.sleep(0.4)
+        if (i + 1) % 100 == 0:
+            print(f"  {i + 1} / {len(todo)}")
+    try:
+        with open(FUND_CACHE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False)
+    except Exception:
+        pass
+    return cache
+
+
 def main():
     codes, tinfo = core.load_tickers("全銘柄")
     print(f"対象 {len(codes)} 銘柄")
@@ -37,6 +80,8 @@ def main():
     print(f"株価を取得できた銘柄: {len(prices)}")
     if len(prices) < MIN_OK:
         raise SystemExit("株価をほとんど取得できませんでした（ヤフーに断られた可能性）")
+
+    fund = fetch_fundamentals(list(prices))
 
     series = {}
     for c, df in prices.items():
@@ -70,6 +115,9 @@ def main():
             "val": r2((cl * v).tail(20).mean() / 1e6),          # 20日平均売買代金（百万R$）
             "atr": r2(tr.tail(14).mean() / last * 100) if last else None,
             "rsi": r2(core.rsi(cl).iloc[-1]),
+            "roe": (fund.get(c) or {}).get("roe"),
+            "roa": (fund.get(c) or {}).get("roa"),
+            "fin": ((fund.get(c) or {}).get("sector") or info.get("sector") or "") == "Financial Services",
             "last": df.index[-1].strftime("%Y-%m-%d"),
             "d": aligned[c]["d"], "w": aligned[c]["w"], "m": aligned[c]["m"],
         })
@@ -84,6 +132,8 @@ def main():
     print(f"書き出し: {path}（{os.path.getsize(path) / 1e6:.1f} MB、{len(stocks)} 銘柄）")
     with open(os.path.join(OUT_DIR, "meta.json"), "w", encoding="utf-8") as f:   # 動作確認用
         json.dump({"updated": out["updated"], "tickers": len(codes), "stocks": len(stocks),
+                   "with_roe": sum(1 for s in stocks if s["roe"] is not None),
+                   "with_roa": sum(1 for s in stocks if s["roa"] is not None),
                    "last_daily": dates["d"][-1], "size_mb": round(os.path.getsize(path) / 1e6, 2)}, f, ensure_ascii=False)
 
 

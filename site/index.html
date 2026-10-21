@@ -82,11 +82,20 @@ svg{width:100%;height:230px;display:block;touch-action:pan-y}
       <label class="f">売買単位（株）<input type="number" id="lot" step="1"></label>
       <label class="f">最低売買代金（百万R$）<input type="number" id="minval" step="1"></label>
     </div>
+    <div class="row">
+      <label class="f">ROE 下限（%）<span style="display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="roeuse" style="width:20px;height:20px">
+        <input type="number" id="roemin" step="1"></span></label>
+      <label class="f">ROA 下限（%）<span style="display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="roause" style="width:20px;height:20px">
+        <input type="number" id="roamin" step="0.5"></span></label>
+    </div>
+    <p class="note" style="margin:-2px 0 8px">チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA は週1回更新。ROE＝自己資本に対する利益、ROA＝総資産に対する利益</p>
     <table class="tf">
       <thead><tr><th>足</th><th>使う</th><th>MA期間</th><th>比較本数</th><th>角度 下限</th><th>上限</th></tr></thead>
       <tbody id="tfrows"></tbody>
     </table>
-    <p class="note">角度＝MA の傾き（1本あたり 1% の上昇で 45°、横ばい 0°、下向きはマイナス）。「上向き」は下限 0、「下向き」は上限 0。空欄はその側を制限しません。設定はこの iPad に保存されます。</p>
+    <p class="note">ROE の * は銀行・保険などの金融株（ROE はふつうの会社と同じように比べられますが、ROA は資産が大きいぶん 1〜2% 程度と低く出ます）。角度＝MA の傾き（1本あたり 1% の上昇で 45°、横ばい 0°、下向きはマイナス）。「上向き」は下限 0、「下向き」は上限 0。空欄はその側を制限しません。設定はこの iPad に保存されます。</p>
   </section>
 
   <section class="card">
@@ -114,7 +123,7 @@ const TF = [
   {k:"w", name:"週足", per:13, look:3, show:104},
   {k:"m", name:"月足", per:12, look:3, show:120},
 ];
-const DEF = {budget:20000, lot:100, minval:5,
+const DEF = {budget:20000, lot:100, minval:5, roeuse:false, roemin:10, roause:false, roamin:5,
   tf:{d:{use:false,per:25,look:5,lo:"",hi:""}, w:{use:false,per:13,look:3,lo:"",hi:""}, m:{use:false,per:12,look:3,lo:"",hi:""}},
   sort:{key:"val",dir:-1}, sel:null};
 let S = load(), DATA = null, ROWS = [];
@@ -184,6 +193,8 @@ function recompute(){
     s._a = a;
     if(budget !== null && (s.p === null || s.p * lot > budget)) continue;
     if(minval !== null && (s.val === null || s.val < minval)) continue;
+    if(S.roeuse && num(S.roemin) !== null && (s.roe === null || s.roe === undefined || s.roe < num(S.roemin))) continue;
+    if(S.roause && num(S.roamin) !== null && (s.roa === null || s.roa === undefined || s.roa < num(S.roamin))) continue;
     let ok = true;
     for(const t of TF){
       const c = S.tf[t.k]; if(!c.use) continue;
@@ -204,7 +215,7 @@ function recompute(){
 
 const COLS = [
   {k:"c", t:"銘柄"}, {k:"p", t:"終値"}, {k:"chg", t:"前日比%"}, {k:"val", t:"売買代金"},
-  {k:"a_d", t:"日足°"}, {k:"a_w", t:"週足°"}, {k:"a_m", t:"月足°"}, {k:"rsi", t:"RSI"},
+  {k:"a_d", t:"日足°"}, {k:"a_w", t:"週足°"}, {k:"a_m", t:"月足°"}, {k:"roe", t:"ROE%"}, {k:"roa", t:"ROA%"}, {k:"rsi", t:"RSI"},
 ];
 function fmt(v, d=1){ return v === null || v === undefined ? "–" : v.toFixed(d); }
 function sgn(v){ return v === null || v === undefined ? "" : (v > 0 ? "pos" : v < 0 ? "neg" : ""); }
@@ -219,7 +230,7 @@ function renderTable(){
     <td><b>${s.c}</b><span class="nm">${s.n || ""}</span></td>
     <td>${fmt(s.p,2)}</td><td class="${sgn(s.chg)}">${fmt(s.chg,2)}</td><td>${fmt(s.val,1)}</td>
     <td class="${sgn(s._a.d)}">${fmt(s._a.d)}</td><td class="${sgn(s._a.w)}">${fmt(s._a.w)}</td>
-    <td class="${sgn(s._a.m)}">${fmt(s._a.m)}</td><td>${fmt(s.rsi,0)}</td></tr>`).join("");
+    <td class="${sgn(s._a.m)}">${fmt(s._a.m)}</td><td class="${sgn(s.roe)}" title="${s.fin?"金融（銀行・保険など）":""}">${fmt(s.roe,1)}${s.fin?"*":""}</td><td class="${sgn(s.roa)}">${fmt(s.roa,1)}</td><td>${fmt(s.rsi,0)}</td></tr>`).join("");
   tb.querySelectorAll("tr").forEach(r => r.addEventListener("click", () => {
     select(r.dataset.c); document.getElementById("chartcard").scrollIntoView({behavior:"smooth"});
   }));
@@ -230,7 +241,7 @@ function select(code){
   S.sel = code; save();
   document.querySelectorAll("#res tbody tr").forEach(r => r.classList.toggle("sel", r.dataset.c === code));
   document.getElementById("selcode").textContent = code;
-  document.getElementById("selname").textContent = `${s.n || ""}　終値 R$${fmt(s.p,2)}（${s.last}）`;
+  document.getElementById("selname").textContent = `${s.n || ""}　終値 R$${fmt(s.p,2)}（${s.last}）　ROE ${fmt(s.roe,1)}%　ROA ${fmt(s.roa,1)}%`;
   const box = document.getElementById("charts"); box.innerHTML = "";
   TF.forEach(t => {
     const per = +S.tf[t.k].per, ang = angle(s[t.k], per, +S.tf[t.k].look);
@@ -285,7 +296,11 @@ function drawChart(div, dates, close, ma, show){
 }
 
 function bindBasics(){
-  ["budget","lot","minval"].forEach(id => {
+  ["roeuse","roause"].forEach(id => {
+    const cb = document.getElementById(id); cb.checked = !!S[id];
+    cb.addEventListener("change", () => { S[id] = cb.checked; save(); recompute(); });
+  });
+  ["budget","lot","minval","roemin","roamin"].forEach(id => {
     const el = document.getElementById(id); el.value = S[id] ?? "";
     el.addEventListener("input", () => { S[id] = el.value; save(); recompute(); });
   });
