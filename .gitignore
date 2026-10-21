@@ -1,0 +1,6 @@
+site/data/
+scripts/__pycache__/
+scripts/*.json
+scripts/*.csv
+scripts/*.xlsx
+scripts/copy_to.txt

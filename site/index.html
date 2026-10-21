@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ブラジル株 MA スクリーナー</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#1b2430; --sub:#5b6573; --line:#e3e6eb;
+  --accent:#1f4e79; --accent-soft:#e8f0f8; --up:#0f7b3c; --down:#c0392b;
+  --close:#1f3864; --ma:#e46c0a; --input:#fff8e1;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#11151b; --panel:#1a2029; --ink:#e7ebf0; --sub:#9aa5b4; --line:#2c3440;
+    --accent:#7fb0e0; --accent-soft:#1f2b3a; --up:#3ccf7a; --down:#ff6b5e;
+    --close:#a9c7ea; --ma:#ffa24d; --input:#2a2618;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  padding:env(safe-area-inset-top) 0 40px}
+header{padding:14px 16px 6px}
+h1{font-size:20px;margin:0}
+.meta{color:var(--sub);font-size:13px}
+main{display:grid;gap:14px;padding:0 16px;max-width:1300px;margin:0 auto}
+@media (min-width:1000px){main{grid-template-columns:420px 1fr;align-items:start}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card h2{font-size:16px;margin:0 0 10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+label.f{display:flex;flex-direction:column;font-size:12px;color:var(--sub);gap:2px}
+input[type=number],input[type=text]{width:92px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;
+  background:var(--input);color:var(--ink);font-size:15px}
+input.w{width:120px}
+table.tf{width:100%;border-collapse:collapse;font-size:13px}
+table.tf th{color:var(--sub);font-weight:600;text-align:center;padding:4px 2px}
+table.tf td{padding:4px 2px;text-align:center}
+table.tf input[type=number]{width:58px;padding:5px;font-size:14px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--ink);padding:5px 12px;font-size:13px;white-space:nowrap}
+table.tf th,table.tf td:first-child{white-space:nowrap}
+tr.segrow td{padding-bottom:8px;border-bottom:1px solid var(--line)}
+.seg button.on{background:var(--accent);color:#fff}
+.note{font-size:12px;color:var(--sub);margin:6px 0 0}
+.count{font-size:15px;font-weight:700}
+.list{max-height:62vh;overflow:auto;border-top:1px solid var(--line);margin-top:8px}
+table.res{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+table.res th{position:sticky;top:0;background:var(--panel);color:var(--sub);font-weight:600;
+  padding:6px 4px;border-bottom:1px solid var(--line);text-align:right;cursor:pointer;white-space:nowrap}
+table.res th:first-child,table.res td:first-child{text-align:left}
+table.res td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+table.res tr{cursor:pointer}
+table.res tr.sel{background:var(--accent-soft)}
+.nm{color:var(--sub);font-size:11px;display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.pos{color:var(--up)} .neg{color:var(--down)}
+.charts{display:grid;gap:12px}
+.chart{position:relative}
+.chart h3{font-size:14px;margin:0 0 4px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.chart h3 .ang{font-weight:700}
+svg{width:100%;height:230px;display:block;touch-action:pan-y}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  padding:3px 6px;font-size:12px;display:none;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.legend{font-size:12px;color:var(--sub)}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin:0 4px 0 8px}
+.pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.big{font-size:18px;font-weight:700}
+.err{color:var(--down)}
+</style>
+</head>
+<body>
+<header>
+  <h1>ブラジル株 MA スクリーナー</h1>
+  <div class="meta" id="meta">データを読み込み中…</div>
+</header>
+<main>
+  <section class="card" id="filters">
+    <h2>条件</h2>
+    <div class="row">
+      <label class="f">投資可能額（R$）<input type="number" id="budget" class="w" step="1000"></label>
+      <label class="f">売買単位（株）<input type="number" id="lot" step="1"></label>
+      <label class="f">最低売買代金（百万R$）<input type="number" id="minval" step="1"></label>
+    </div>
+    <table class="tf">
+      <thead><tr><th>足</th><th>使う</th><th>MA期間</th><th>比較本数</th><th>角度 下限</th><th>上限</th></tr></thead>
+      <tbody id="tfrows"></tbody>
+    </table>
+    <p class="note">角度＝MA の傾き（1本あたり 1% の上昇で 45°、横ばい 0°、下向きはマイナス）。「上向き」は下限 0、「下向き」は上限 0。空欄はその側を制限しません。設定はこの iPad に保存されます。</p>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">結果 <span class="count" id="count"></span></h2>
+      <span class="note" style="margin:0">見出しをタップで並べ替え・行をタップでチャート</span>
+    </div>
+    <div class="list"><table class="res" id="res"><thead></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="card" id="chartcard" style="grid-column:1/-1">
+    <div class="pick">
+      <span class="big" id="selcode">—</span><span id="selname" class="meta"></span>
+      <input type="text" id="search" class="w" style="width:190px" list="codes" placeholder="銘柄コード（例 PETR4）" autocapitalize="characters">
+      <datalist id="codes"></datalist>
+      <span class="legend"><i style="background:var(--close)"></i>終値<i style="background:var(--ma)"></i>MA</span>
+    </div>
+    <div class="charts" id="charts"></div>
+  </section>
+</main>
+
+<script>
+const TF = [
+  {k:"d", name:"日足", per:25, look:5, show:150},
+  {k:"w", name:"週足", per:13, look:3, show:104},
+  {k:"m", name:"月足", per:12, look:3, show:120},
+];
+const DEF = {budget:20000, lot:100, minval:5,
+  tf:{d:{use:false,per:25,look:5,lo:"",hi:""}, w:{use:false,per:13,look:3,lo:"",hi:""}, m:{use:false,per:12,look:3,lo:"",hi:""}},
+  sort:{key:"val",dir:-1}, sel:null};
+let S = load(), DATA = null, ROWS = [];
+
+function load(){
+  try{ const s = JSON.parse(localStorage.getItem("brsc") || "null"); if(s) return Object.assign(structuredClone(DEF), s); }catch(e){}
+  return structuredClone(DEF);
+}
+function save(){ try{ localStorage.setItem("brsc", JSON.stringify(S)); }catch(e){} }
+const num = v => (v === "" || v === null || v === undefined || isNaN(+v)) ? null : +v;
+
+// 単純移動平均と角度（パソコン版と同じ計算）
+function sma(arr, p){
+  const out = new Array(arr.length).fill(null); let s = 0, n = 0;
+  for(let i=0;i<arr.length;i++){
+    const v = arr[i];
+    if(v === null){ s = 0; n = 0; continue; }
+    s += v; n++;
+    if(n > p){ s -= arr[i-p]; n = p; }
+    if(n === p) out[i] = s / p;
+  }
+  return out;
+}
+function angle(arr, p, look){
+  const m = sma(arr, p), i = m.length - 1;
+  if(i - look < 0 || m[i] === null || m[i-look] === null || m[i-look] <= 0) return null;
+  const per = (Math.pow(m[i] / m[i-look], 1/look) - 1) * 100;
+  return Math.atan(per) * 180 / Math.PI;
+}
+
+function buildTfRows(){
+  const tb = document.getElementById("tfrows"); tb.innerHTML = "";
+  TF.forEach(t => {
+    const c = S.tf[t.k], tr = document.createElement("tr");
+    tr.innerHTML = `<td>${t.name}</td>
+      <td><input type="checkbox" data-k="use" ${c.use?"checked":""}></td>
+      <td><input type="number" data-k="per" value="${c.per}" min="2"></td>
+      <td><input type="number" data-k="look" value="${c.look}" min="1"></td>
+      <td><input type="number" data-k="lo" value="${c.lo}" step="1"></td>
+      <td><input type="number" data-k="hi" value="${c.hi}" step="1"></td>`;
+    const tr2 = document.createElement("tr"); tr2.className = "segrow";
+    tr2.innerHTML = `<td></td><td colspan="5" style="text-align:left"><span class="seg"><button data-q="up">上向き</button><button data-q="down">下向き</button><button data-q="any">問わない</button></span></td>`;
+    tr.querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => {
+      const k = inp.dataset.k;
+      c[k] = k === "use" ? inp.checked : (k === "lo" || k === "hi" ? inp.value : (+inp.value || c[k]));
+      if(k !== "use" && k !== "lo" && k !== "hi") c.use = c.use; // 期間変更
+      save(); recompute();
+    }));
+    tr2.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+      const q = b.dataset.q;
+      c.use = q !== "any"; c.lo = q === "up" ? "0" : ""; c.hi = q === "down" ? "0" : "";
+      save(); buildTfRows(); recompute();
+    }));
+    const q = !c.use ? "any" : (num(c.lo) === 0 && num(c.hi) === null ? "up" : (num(c.hi) === 0 && num(c.lo) === null ? "down" : ""));
+    tr2.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.q === q));
+    tb.appendChild(tr); tb.appendChild(tr2);
+  });
+}
+
+function recompute(){
+  if(!DATA) return;
+  const budget = num(S.budget), lot = num(S.lot) || 100, minval = num(S.minval);
+  ROWS = [];
+  for(const s of DATA.stocks){
+    const a = {};
+    TF.forEach(t => { a[t.k] = angle(s[t.k], +S.tf[t.k].per, +S.tf[t.k].look); });
+    s._a = a;
+    if(budget !== null && (s.p === null || s.p * lot > budget)) continue;
+    if(minval !== null && (s.val === null || s.val < minval)) continue;
+    let ok = true;
+    for(const t of TF){
+      const c = S.tf[t.k]; if(!c.use) continue;
+      const v = a[t.k], lo = num(c.lo), hi = num(c.hi);
+      if(v === null || (lo !== null && v < lo) || (hi !== null && v > hi)){ ok = false; break; }
+    }
+    if(ok) ROWS.push(s);
+  }
+  const {key, dir} = S.sort;
+  const val = s => key.startsWith("a_") ? s._a[key.slice(2)] : s[key];
+  ROWS.sort((x,y) => {
+    const a = val(x), b = val(y);
+    if(a === null || a === undefined) return 1; if(b === null || b === undefined) return -1;
+    return (typeof a === "string" ? a.localeCompare(b) : a - b) * dir;
+  });
+  renderTable();
+}
+
+const COLS = [
+  {k:"c", t:"銘柄"}, {k:"p", t:"終値"}, {k:"chg", t:"前日比%"}, {k:"val", t:"売買代金"},
+  {k:"a_d", t:"日足°"}, {k:"a_w", t:"週足°"}, {k:"a_m", t:"月足°"}, {k:"rsi", t:"RSI"},
+];
+function fmt(v, d=1){ return v === null || v === undefined ? "–" : v.toFixed(d); }
+function sgn(v){ return v === null || v === undefined ? "" : (v > 0 ? "pos" : v < 0 ? "neg" : ""); }
+function renderTable(){
+  const th = document.querySelector("#res thead"), tb = document.querySelector("#res tbody");
+  th.innerHTML = "<tr>" + COLS.map(c => `<th data-k="${c.k}">${c.t}${S.sort.key===c.k ? (S.sort.dir>0?" ▲":" ▼") : ""}</th>`).join("") + "</tr>";
+  th.querySelectorAll("th").forEach(h => h.addEventListener("click", () => {
+    const k = h.dataset.k; S.sort = {key:k, dir: S.sort.key === k ? -S.sort.dir : (k === "c" ? 1 : -1)}; save(); recompute();
+  }));
+  document.getElementById("count").textContent = `${ROWS.length} 銘柄`;
+  tb.innerHTML = ROWS.map(s => `<tr data-c="${s.c}" class="${s.c===S.sel?"sel":""}">
+    <td><b>${s.c}</b><span class="nm">${s.n || ""}</span></td>
+    <td>${fmt(s.p,2)}</td><td class="${sgn(s.chg)}">${fmt(s.chg,2)}</td><td>${fmt(s.val,1)}</td>
+    <td class="${sgn(s._a.d)}">${fmt(s._a.d)}</td><td class="${sgn(s._a.w)}">${fmt(s._a.w)}</td>
+    <td class="${sgn(s._a.m)}">${fmt(s._a.m)}</td><td>${fmt(s.rsi,0)}</td></tr>`).join("");
+  tb.querySelectorAll("tr").forEach(r => r.addEventListener("click", () => {
+    select(r.dataset.c); document.getElementById("chartcard").scrollIntoView({behavior:"smooth"});
+  }));
+}
+
+function select(code){
+  const s = DATA.stocks.find(x => x.c === code); if(!s) return;
+  S.sel = code; save();
+  document.querySelectorAll("#res tbody tr").forEach(r => r.classList.toggle("sel", r.dataset.c === code));
+  document.getElementById("selcode").textContent = code;
+  document.getElementById("selname").textContent = `${s.n || ""}　終値 R$${fmt(s.p,2)}（${s.last}）`;
+  const box = document.getElementById("charts"); box.innerHTML = "";
+  TF.forEach(t => {
+    const per = +S.tf[t.k].per, ang = angle(s[t.k], per, +S.tf[t.k].look);
+    const div = document.createElement("div"); div.className = "chart";
+    div.innerHTML = `<h3>${t.name}　MA${per}<span class="ang ${sgn(ang)}">角度 ${ang===null?"–":(ang>0?"+":"")+ang.toFixed(1)+"°"}</span></h3><div class="tip"></div>`;
+    box.appendChild(div);
+    drawChart(div, DATA.dates[t.k], s[t.k], sma(s[t.k], per), t.show);
+  });
+}
+
+function drawChart(div, dates, close, ma, show){
+  const n = close.length, st = Math.max(0, n - show);
+  const D = dates.slice(st), C = close.slice(st), M = ma.slice(st);
+  const vals = C.concat(M).filter(v => v !== null);
+  const W = 1000, H = 230, L = 52, R = 10, T = 10, B = 26;
+  const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio","none");
+  if(!vals.length){ div.appendChild(svg); return; }
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * 0.06 || hi * 0.05 || 1; lo -= pad; hi += pad;
+  const x = i => L + (W - L - R) * (D.length < 2 ? 0 : i / (D.length - 1));
+  const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  const css = getComputedStyle(document.documentElement);
+  const col = n => css.getPropertyValue(n).trim();
+  let g = "";
+  for(let k=0;k<=4;k++){
+    const v = lo + (hi - lo) * k / 4, yy = y(v);
+    g += `<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="${col("--line")}" stroke-width="1"/>`;
+    g += `<text x="${L-6}" y="${yy+4}" text-anchor="end" font-size="13" fill="${col("--sub")}">${v.toFixed(2)}</text>`;
+  }
+  const ticks = 5;
+  for(let k=0;k<ticks;k++){
+    const i = Math.round((D.length - 1) * k / (ticks - 1));
+    g += `<text x="${x(i)}" y="${H-6}" text-anchor="${k===0?"start":k===ticks-1?"end":"middle"}" font-size="13" fill="${col("--sub")}">${(D[i]||"").slice(2,7).replace("-","/")}</text>`;
+  }
+  const path = arr => { let p = "", pen = false; arr.forEach((v,i) => { if(v === null){ pen = false; return; } p += (pen ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1); pen = true; }); return p; };
+  g += `<path d="${path(C)}" fill="none" stroke="${col("--close")}" stroke-width="1.8" vector-effect="non-scaling-stroke"/>`;
+  g += `<path d="${path(M)}" fill="none" stroke="${col("--ma")}" stroke-width="2.4" vector-effect="non-scaling-stroke"/>`;
+  g += `<line id="cur" x1="0" x2="0" y1="${T}" y2="${H-B}" stroke="${col("--sub")}" stroke-dasharray="3 3" visibility="hidden"/>`;
+  svg.innerHTML = g; div.appendChild(svg);
+  const tip = div.querySelector(".tip"), cur = svg.querySelector("#cur");
+  const move = ev => {
+    const r = svg.getBoundingClientRect(), px = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left) / r.width * W;
+    const i = Math.max(0, Math.min(D.length - 1, Math.round((px - L) / (W - L - R) * (D.length - 1))));
+    cur.setAttribute("x1", x(i)); cur.setAttribute("x2", x(i)); cur.setAttribute("visibility", "visible");
+    tip.style.display = "block";
+    tip.textContent = `${D[i]}　終値 ${fmt(C[i],2)}　MA ${fmt(M[i],2)}`;
+    const left = x(i) / W * r.width; tip.style.left = Math.min(Math.max(0, left - 80), r.width - 220) + "px"; tip.style.top = "26px";
+  };
+  const end = () => { tip.style.display = "none"; cur.setAttribute("visibility", "hidden"); };
+  svg.addEventListener("mousemove", move); svg.addEventListener("touchstart", move, {passive:true});
+  svg.addEventListener("touchmove", move, {passive:true}); svg.addEventListener("mouseleave", end); svg.addEventListener("touchend", end);
+}
+
+function bindBasics(){
+  ["budget","lot","minval"].forEach(id => {
+    const el = document.getElementById(id); el.value = S[id] ?? "";
+    el.addEventListener("input", () => { S[id] = el.value; save(); recompute(); });
+  });
+  const sr = document.getElementById("search");
+  sr.addEventListener("change", () => { const c = sr.value.trim().toUpperCase(); if(c){ select(c); sr.value = ""; } });
+}
+
+async function init(){
+  bindBasics(); buildTfRows();
+  try{
+    const r = await fetch("data/all.json", {cache:"no-cache"});
+    if(!r.ok) throw new Error(r.status);
+    DATA = await r.json();
+  }catch(e){
+    document.getElementById("meta").innerHTML = `<span class="err">データを読み込めませんでした（${e.message}）。夜の更新が終わっていない可能性があります。</span>`;
+    return;
+  }
+  const lastD = DATA.dates.d[DATA.dates.d.length - 1];
+  document.getElementById("meta").textContent = `更新 ${DATA.updated}　最新の日足 ${lastD}　対象 ${DATA.stocks.length} 銘柄（ヤフーファイナンスのデータ）`;
+  document.getElementById("codes").innerHTML = DATA.stocks.map(s => `<option value="${s.c}">${s.n || ""}</option>`).join("");
+  recompute();
+  select(S.sel && DATA.stocks.some(s => s.c === S.sel) ? S.sel : (ROWS[0] || DATA.stocks[0]).c);
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => S.sel && select(S.sel));
+init();
+</script>
+</body>
+</html>

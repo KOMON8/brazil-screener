@@ -1,0 +1,44 @@
+name: 毎晩データ更新
+
+on:
+  schedule:
+    - cron: "48 9 * * *"     # 毎日 18:48（日本時間）。ブラジル市場が開く 22:00 より前
+  workflow_dispatch: {}      # Actions の画面から手動でも実行できる
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: ライブラリを入れる
+        run: pip install yfinance pandas numpy openpyxl
+      - name: データを作る
+        run: python scripts/build_data.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
