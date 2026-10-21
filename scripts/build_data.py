@@ -34,6 +34,32 @@ FUND_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fund_cach
 FUND_DAYS = 7                      # 財務の数字はこの日数ごとに取り直す（決算は3か月ごとなので週1回で十分）
 
 
+def resample_ohlc(df, rule):
+    """日足を週足・月足のローソク足に変換"""
+    agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last"}
+    try:
+        out = df[list(agg)].resample(rule).agg(agg)
+    except ValueError:
+        out = df[list(agg)].resample(rule.replace("ME", "M")).agg(agg)
+    return out.dropna()
+
+
+def write_ohlc(prices, dirpath, dec=2):
+    """チャート用のローソク足を銘柄ごとのファイルに書き出す（タップした銘柄だけ読み込む）"""
+    os.makedirs(dirpath, exist_ok=True)
+    rnd = lambda x: None if pd.isna(x) else round(float(x), dec)
+    for c, df in prices.items():
+        rec = {}
+        for tf, rule in (("d", None), ("w", "W-FRI"), ("m", "ME")):
+            o = (df[["Open", "High", "Low", "Close"]] if rule is None else resample_ohlc(df, rule)).tail(BARS[tf])
+            rec[tf] = {"t": [d.strftime("%Y-%m-%d") for d in o.index],
+                       "o": [rnd(x) for x in o["Open"]], "h": [rnd(x) for x in o["High"]],
+                       "l": [rnd(x) for x in o["Low"]], "c": [rnd(x) for x in o["Close"]]}
+        with open(os.path.join(dirpath, c + ".json"), "w", encoding="utf-8") as f:
+            json.dump(rec, f, separators=(",", ":"))
+    print(f"ローソク足: {dirpath}（{len(prices)} 銘柄）")
+
+
 def fetch_fundamentals(codes, suffix=".SA", cache_path=None, want_roa=True):
     """ROE などの財務の数字（ヤフーの銘柄情報）。前回の記録が新しい銘柄は取り直さない"""
     import time
@@ -166,6 +192,7 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     now = dt.datetime.now(dt.timezone(dt.timedelta(hours=9)))
     out = {"updated": now.strftime("%Y-%m-%d %H:%M") + "（日本時間）", "dates": dates, "stocks": stocks}
+    write_ohlc(prices, os.path.join(OUT_DIR, "ohlc", "br"), 2)
     path = os.path.join(OUT_DIR, "all.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))

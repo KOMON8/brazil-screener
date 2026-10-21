@@ -17,7 +17,7 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import screener_core as core
-from build_data import r2, fetch_fundamentals, BARS
+from build_data import r2, fetch_fundamentals, write_ohlc, BARS
 
 OUT_DIR = os.path.join(HERE, "..", "site", "data")
 LIST_URLS = ("https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx",
@@ -116,6 +116,7 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     now = dt.datetime.now(dt.timezone(dt.timedelta(hours=9)))
     out = {"updated": now.strftime("%Y-%m-%d %H:%M") + "（日本時間）", "dates": dates, "stocks": stocks}
+    write_ohlc(prices, os.path.join(OUT_DIR, "ohlc", "jp"), 1)
     path = os.path.join(OUT_DIR, "jp.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))

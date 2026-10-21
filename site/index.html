@@ -115,7 +115,7 @@ svg{width:100%;height:230px;display:block;touch-action:pan-y}
       <span class="big" id="selcode">—</span><span id="selname" class="meta"></span>
       <input type="text" id="search" class="w" style="width:190px" list="codes" placeholder="銘柄コード" autocapitalize="characters">
       <datalist id="codes"></datalist>
-      <span class="legend"><i style="background:var(--close)"></i>終値<i style="background:var(--ma)"></i>MA</span>
+      <span class="legend"><i style="background:var(--up)"></i>陽線<i style="background:var(--down)"></i>陰線<i style="background:var(--ma)"></i>MA</span>
     </div>
     <div class="charts" id="charts"></div>
   </section>
@@ -128,9 +128,9 @@ const TF = [
   {k:"m", name:"月足", per:12, look:3, show:120},
 ];
 const MK = {
-  br: {name:"ブラジル株", file:"data/all.json", key:"brsc", cur:"R$", budget:20000, bstep:1000, minval:5, valUnit:"百万R$",
+  br: {name:"ブラジル株", file:"data/all.json", ohlc:"data/ohlc/br/", key:"brsc", cur:"R$", budget:20000, bstep:1000, minval:5, valUnit:"百万R$",
        roa:true, pdec:2, ex:"例 PETR4", src:"ヤフーファイナンスのデータ"},
-  jp: {name:"日本株", file:"data/jp.json", key:"jpsc", cur:"円", budget:1000000, bstep:100000, minval:1, valUnit:"億円",
+  jp: {name:"日本株", file:"data/jp.json", ohlc:"data/ohlc/jp/", key:"jpsc", cur:"円", budget:1000000, bstep:100000, minval:1, valUnit:"億円",
        roa:false, pdec:1, ex:"例 7203", src:"ヤフーファイナンスのデータ・東証の売買代金1日1億円以上の銘柄"},
 };
 let M = (()=>{ try{ return localStorage.getItem("mk") || "br"; }catch(e){ return "br"; } })();
@@ -251,6 +251,16 @@ function renderTable(){
   }));
 }
 
+const OHLC = {};
+async function loadOhlc(mk, code){
+  const k = mk + ":" + code;
+  if(!(k in OHLC)){
+    try{ const r = await fetch(MK[mk].ohlc + encodeURIComponent(code) + ".json", {cache:"no-cache"}); OHLC[k] = r.ok ? await r.json() : null; }
+    catch(e){ OHLC[k] = null; }
+  }
+  return OHLC[k];
+}
+
 function select(code){
   const s = DATA.stocks.find(x => x.c === code); if(!s) return;
   S.sel = code; save();
@@ -258,19 +268,30 @@ function select(code){
   document.getElementById("selcode").textContent = code;
   document.getElementById("selname").textContent = `${s.n || ""}　終値 ${MK[M].cur === "R$" ? "R$" + fmt(s.p,2) : fmt(s.p,1) + "円"}（${s.last}）　ROE ${fmt(s.roe,1)}%` + (MK[M].roa ? `　ROA ${fmt(s.roa,1)}%` : "");
   const box = document.getElementById("charts"); box.innerHTML = "";
+  const divs = {};
   TF.forEach(t => {
     const per = +S.tf[t.k].per, ang = angle(s[t.k], per, +S.tf[t.k].look);
     const div = document.createElement("div"); div.className = "chart";
     div.innerHTML = `<h3>${t.name}　MA${per}<span class="ang ${sgn(ang)}">角度 ${ang===null?"–":(ang>0?"+":"")+ang.toFixed(1)+"°"}</span></h3><div class="tip"></div>`;
-    box.appendChild(div);
+    box.appendChild(div); divs[t.k] = div;
     drawChart(div, DATA.dates[t.k], s[t.k], sma(s[t.k], per), t.show);
+  });
+  const mk = M;
+  loadOhlc(mk, code).then(o => {          // ローソク足が届いたら描き直す
+    if(!o || mk !== M || S.sel !== code) return;
+    TF.forEach(t => {
+      const b = o[t.k]; if(!b || !b.c || !b.c.length) return;
+      const div = divs[t.k], old = div.querySelector("svg"); if(old) old.remove();
+      drawChart(div, b.t, b.c, sma(b.c, +S.tf[t.k].per), t.show, b);
+    });
   });
 }
 
-function drawChart(div, dates, close, ma, show){
+function drawChart(div, dates, close, ma, show, ohlc){
   const n = close.length, st = Math.max(0, n - show);
   const D = dates.slice(st), C = close.slice(st), M = ma.slice(st);
-  const vals = C.concat(M).filter(v => v !== null);
+  const O = ohlc ? ohlc.o.slice(st) : null, Hi = ohlc ? ohlc.h.slice(st) : null, Lo = ohlc ? ohlc.l.slice(st) : null;
+  const vals = (ohlc ? Hi.concat(Lo) : C).concat(M).filter(v => v !== null);
   const W = 1000, H = 230, L = 52, R = 10, T = 10, B = 26;
   const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio","none");
@@ -292,7 +313,18 @@ function drawChart(div, dates, close, ma, show){
     g += `<text x="${x(i)}" y="${H-6}" text-anchor="${k===0?"start":k===ticks-1?"end":"middle"}" font-size="13" fill="${col("--sub")}">${(D[i]||"").slice(2,7).replace("-","/")}</text>`;
   }
   const path = arr => { let p = "", pen = false; arr.forEach((v,i) => { if(v === null){ pen = false; return; } p += (pen ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1); pen = true; }); return p; };
-  g += `<path d="${path(C)}" fill="none" stroke="${col("--close")}" stroke-width="1.8" vector-effect="non-scaling-stroke"/>`;
+  if(ohlc){
+    const bw = Math.max(1, (W - L - R) / Math.max(D.length, 1) * 0.7);
+    D.forEach((_, i) => {
+      if(C[i] === null || Hi[i] === null || Lo[i] === null) return;
+      const o = O[i] === null ? C[i] : O[i], upc = C[i] >= o, c = col(upc ? "--up" : "--down"), xx = x(i).toFixed(1);
+      const y1 = y(Math.max(o, C[i])), y2 = y(Math.min(o, C[i]));
+      g += `<line x1="${xx}" x2="${xx}" y1="${y(Hi[i]).toFixed(1)}" y2="${y(Lo[i]).toFixed(1)}" stroke="${c}" stroke-width="1"/>`;
+      g += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y1.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, y2 - y1).toFixed(1)}" fill="${upc ? "none" : c}" stroke="${c}" stroke-width="1"/>`;
+    });
+  } else {
+    g += `<path d="${path(C)}" fill="none" stroke="${col("--close")}" stroke-width="1.8" vector-effect="non-scaling-stroke"/>`;
+  }
   g += `<path d="${path(M)}" fill="none" stroke="${col("--ma")}" stroke-width="2.4" vector-effect="non-scaling-stroke"/>`;
   g += `<line id="cur" x1="0" x2="0" y1="${T}" y2="${H-B}" stroke="${col("--sub")}" stroke-dasharray="3 3" visibility="hidden"/>`;
   svg.innerHTML = g; div.appendChild(svg);
@@ -302,8 +334,8 @@ function drawChart(div, dates, close, ma, show){
     const i = Math.max(0, Math.min(D.length - 1, Math.round((px - L) / (W - L - R) * (D.length - 1))));
     cur.setAttribute("x1", x(i)); cur.setAttribute("x2", x(i)); cur.setAttribute("visibility", "visible");
     tip.style.display = "block";
-    tip.textContent = `${D[i]}　終値 ${fmt(C[i],2)}　MA ${fmt(M[i],2)}`;
-    const left = x(i) / W * r.width; tip.style.left = Math.min(Math.max(0, left - 80), r.width - 220) + "px"; tip.style.top = "26px";
+    tip.textContent = ohlc ? `${D[i]}　始 ${fmt(O[i],2)} 高 ${fmt(Hi[i],2)} 安 ${fmt(Lo[i],2)} 終 ${fmt(C[i],2)}　MA ${fmt(M[i],2)}` : `${D[i]}　終値 ${fmt(C[i],2)}　MA ${fmt(M[i],2)}`;
+    const left = x(i) / W * r.width; tip.style.left = Math.max(0, Math.min(left - 120, r.width - tip.offsetWidth - 4)) + "px"; tip.style.top = "26px";
   };
   const end = () => { tip.style.display = "none"; cur.setAttribute("visibility", "hidden"); };
   svg.addEventListener("mousemove", move); svg.addEventListener("touchstart", move, {passive:true});
