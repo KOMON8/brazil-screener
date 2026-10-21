@@ -289,9 +289,9 @@ function select(code){
 
 function drawChart(div, dates, close, ma, show, ohlc){
   const n = close.length, st = Math.max(0, n - show);
-  const D = dates.slice(st), C = close.slice(st), M = ma.slice(st);
+  const D = dates.slice(st), C = close.slice(st), MV = ma.slice(st);
   const O = ohlc ? ohlc.o.slice(st) : null, Hi = ohlc ? ohlc.h.slice(st) : null, Lo = ohlc ? ohlc.l.slice(st) : null;
-  const vals = (ohlc ? Hi.concat(Lo) : C).concat(M).filter(v => v !== null);
+  const vals = (ohlc ? Hi.concat(Lo) : C).concat(MV).filter(v => v !== null);
   const W = 1000, H = 230, L = 52, R = 10, T = 10, B = 26;
   const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio","none");
@@ -301,11 +301,14 @@ function drawChart(div, dates, close, ma, show, ohlc){
   const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
   const css = getComputedStyle(document.documentElement);
   const col = n => css.getPropertyValue(n).trim();
+  const jp = MK[M].cur === "円";           // 日本株は整数（100円未満などの小さい値幅だけ小数1桁）
+  const adec = jp ? ((hi - lo) < 20 ? 1 : 0) : 2;
+  const pf = v => v === null || v === undefined ? "–" : jp ? Number(v).toLocaleString("ja-JP", {minimumFractionDigits: Math.abs(v) < 1000 ? 1 : 0, maximumFractionDigits: Math.abs(v) < 1000 ? 1 : 0}) : fmt(v, 2);
   let g = "";
   for(let k=0;k<=4;k++){
     const v = lo + (hi - lo) * k / 4, yy = y(v);
     g += `<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="${col("--line")}" stroke-width="1"/>`;
-    g += `<text x="${L-6}" y="${yy+4}" text-anchor="end" font-size="13" fill="${col("--sub")}">${v.toFixed(2)}</text>`;
+    g += `<text x="${L-6}" y="${yy+4}" text-anchor="end" font-size="13" fill="${col("--sub")}">${jp ? v.toLocaleString("ja-JP", {minimumFractionDigits: adec, maximumFractionDigits: adec}) : v.toFixed(2)}</text>`;
   }
   const ticks = 5;
   for(let k=0;k<ticks;k++){
@@ -325,7 +328,7 @@ function drawChart(div, dates, close, ma, show, ohlc){
   } else {
     g += `<path d="${path(C)}" fill="none" stroke="${col("--close")}" stroke-width="1.8" vector-effect="non-scaling-stroke"/>`;
   }
-  g += `<path d="${path(M)}" fill="none" stroke="${col("--ma")}" stroke-width="2.4" vector-effect="non-scaling-stroke"/>`;
+  g += `<path d="${path(MV)}" fill="none" stroke="${col("--ma")}" stroke-width="2.4" vector-effect="non-scaling-stroke"/>`;
   g += `<line id="cur" x1="0" x2="0" y1="${T}" y2="${H-B}" stroke="${col("--sub")}" stroke-dasharray="3 3" visibility="hidden"/>`;
   svg.innerHTML = g; div.appendChild(svg);
   const tip = div.querySelector(".tip"), cur = svg.querySelector("#cur");
@@ -334,7 +337,7 @@ function drawChart(div, dates, close, ma, show, ohlc){
     const i = Math.max(0, Math.min(D.length - 1, Math.round((px - L) / (W - L - R) * (D.length - 1))));
     cur.setAttribute("x1", x(i)); cur.setAttribute("x2", x(i)); cur.setAttribute("visibility", "visible");
     tip.style.display = "block";
-    tip.textContent = ohlc ? `${D[i]}　始 ${fmt(O[i],2)} 高 ${fmt(Hi[i],2)} 安 ${fmt(Lo[i],2)} 終 ${fmt(C[i],2)}　MA ${fmt(M[i],2)}` : `${D[i]}　終値 ${fmt(C[i],2)}　MA ${fmt(M[i],2)}`;
+    tip.textContent = ohlc ? `${D[i]}　始 ${pf(O[i])} 高 ${pf(Hi[i])} 安 ${pf(Lo[i])} 終 ${pf(C[i])}　MA ${pf(MV[i])}` : `${D[i]}　終値 ${pf(C[i])}　MA ${pf(MV[i])}`;
     const left = x(i) / W * r.width; tip.style.left = Math.max(0, Math.min(left - 120, r.width - tip.offsetWidth - 4)) + "px"; tip.style.top = "26px";
   };
   const end = () => { tip.style.display = "none"; cur.setAttribute("visibility", "hidden"); };
