@@ -50,11 +50,42 @@ def fetch_fundamentals(codes, suffix=".SA", cache_path=None, want_roa=True):
     todo = [c for c in codes
             if c not in cache or (want_roa and "roa" not in cache[c]) or (today - dt.date.fromisoformat(cache[c].get("checked", "2000-01-01"))).days >= FUND_DAYS]
     print(f"財務の数字を取得中（{len(todo)} 銘柄、残りは記録を使う）...")
+    def reset_session(strategy=None):
+        """ヤフーの認証（crumb / cookie）を取り直す"""
+        try:
+            from yfinance.data import YfData
+            d = YfData()
+            if strategy and hasattr(d, "_set_cookie_strategy"):
+                try:
+                    d._set_cookie_strategy(strategy)
+                except Exception:
+                    pass
+            for k in ("_crumb", "_cookie"):
+                if hasattr(d, k):
+                    setattr(d, k, None)
+            if hasattr(d, "_set_session"):
+                import requests
+                try:
+                    from curl_cffi import requests as creq
+                    d._set_session(creq.Session(impersonate="chrome"))
+                except Exception:
+                    d._set_session(requests.Session())
+        except Exception as e:
+            print("  認証のやり直しに失敗:", e)
+
+    reset_session()
     fails = 0
+    resets = 0
     for i, c in enumerate(todo):
-        if fails >= 25:                    # 続けて失敗するときはヤフーに断られているので、残りは次回に回す
-            print("  取得の失敗が続いたので、残りは次回に取得します")
-            break
+        if fails >= 10:                    # 続けて失敗したら、認証を取り直して少し待つ
+            if resets >= 4:
+                print("  取得の失敗が続いたので、残りは次回に取得します")
+                break
+            resets += 1
+            print(f"  失敗が続いたので認証を取り直します（{resets}回目）")
+            time.sleep(30 * resets)
+            reset_session("csrf" if resets % 2 else "basic")
+            fails = 0
         rec = {"checked": today.isoformat()}
         try:
             info = yf.Ticker(c + suffix).info
@@ -67,6 +98,8 @@ def fetch_fundamentals(codes, suffix=".SA", cache_path=None, want_roa=True):
         except Exception as e:
             fails += 1
             rec["err"] = str(e)[:80]
+            if fails == 1:
+                print("  エラー:", c, str(e)[:120])
             rec["checked"] = (today - dt.timedelta(days=FUND_DAYS)).isoformat()   # 失敗したら次回また取る
         cache[c] = rec
         time.sleep(0.4)
