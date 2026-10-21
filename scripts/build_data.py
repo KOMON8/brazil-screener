@@ -34,31 +34,38 @@ FUND_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fund_cach
 FUND_DAYS = 7                      # 財務の数字はこの日数ごとに取り直す（決算は3か月ごとなので週1回で十分）
 
 
-def fetch_fundamentals(codes):
+def fetch_fundamentals(codes, suffix=".SA", cache_path=None, want_roa=True):
     """ROE などの財務の数字（ヤフーの銘柄情報）。前回の記録が新しい銘柄は取り直さない"""
     import time
     import yfinance as yf
     today = dt.date.today()
+    cache_path = cache_path or FUND_CACHE
     cache = {}
-    if os.path.exists(FUND_CACHE):
+    if os.path.exists(cache_path):
         try:
-            with open(FUND_CACHE, encoding="utf-8") as f:
+            with open(cache_path, encoding="utf-8") as f:
                 cache = json.load(f)
         except Exception:
             cache = {}
     todo = [c for c in codes
-            if c not in cache or "roa" not in cache[c] or (today - dt.date.fromisoformat(cache[c].get("checked", "2000-01-01"))).days >= FUND_DAYS]
+            if c not in cache or (want_roa and "roa" not in cache[c]) or (today - dt.date.fromisoformat(cache[c].get("checked", "2000-01-01"))).days >= FUND_DAYS]
     print(f"財務の数字を取得中（{len(todo)} 銘柄、残りは記録を使う）...")
+    fails = 0
     for i, c in enumerate(todo):
+        if fails >= 25:                    # 続けて失敗するときはヤフーに断られているので、残りは次回に回す
+            print("  取得の失敗が続いたので、残りは次回に取得します")
+            break
         rec = {"checked": today.isoformat()}
         try:
-            info = yf.Ticker(c + ".SA").info
+            info = yf.Ticker(c + suffix).info
             roe = info.get("returnOnEquity")
             rec["roe"] = r2(roe * 100) if isinstance(roe, (int, float)) else None
             roa = info.get("returnOnAssets")
             rec["roa"] = r2(roa * 100) if isinstance(roa, (int, float)) else None
             rec["sector"] = info.get("sector") or ""
+            fails = 0 if (roe is not None or info.get("shortName")) else fails + 1
         except Exception as e:
+            fails += 1
             rec["err"] = str(e)[:80]
             rec["checked"] = (today - dt.timedelta(days=FUND_DAYS)).isoformat()   # 失敗したら次回また取る
         cache[c] = rec
@@ -66,7 +73,7 @@ def fetch_fundamentals(codes):
         if (i + 1) % 100 == 0:
             print(f"  {i + 1} / {len(todo)}")
     try:
-        with open(FUND_CACHE, "w", encoding="utf-8") as f:
+        with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False)
     except Exception:
         pass

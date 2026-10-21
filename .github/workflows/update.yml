@@ -19,27 +19,36 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: ライブラリを入れる
-        run: pip install yfinance pandas numpy openpyxl
+        run: pip install yfinance pandas numpy openpyxl xlrd
       - name: 財務データの記録を復元
         uses: actions/cache/restore@v4
         with:
-          path: scripts/fund_cache.json
+          path: |
+            scripts/fund_cache.json
+            scripts/fund_cache_jp.json
+            scripts/jp_list.json
           key: fund-${{ github.run_id }}
           restore-keys: fund-
-      - name: データを作る
+      - name: データを作る（ブラジル株）
         run: python scripts/build_data.py
+      - name: データを作る（日本株）
+        continue-on-error: true      # 日本株で失敗しても、ブラジル株のページは公開する
+        run: python scripts/build_jp.py
       - name: 財務データの記録を保存
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: scripts/fund_cache.json
+          path: |
+            scripts/fund_cache.json
+            scripts/fund_cache_jp.json
+            scripts/jp_list.json
           key: fund-${{ github.run_id }}
       - uses: actions/upload-pages-artifact@v3
         with:

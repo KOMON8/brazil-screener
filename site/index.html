@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>ブラジル株 MA スクリーナー</title>
+<title>MA スクリーナー</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{
@@ -67,35 +67,39 @@ svg{width:100%;height:230px;display:block;touch-action:pan-y}
 .pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .big{font-size:18px;font-weight:700}
 .err{color:var(--down)}
+.mk{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:8px}
+.mk button{border:0;background:var(--panel);color:var(--ink);padding:8px 18px;font-size:15px;font-weight:600}
+.mk button.on{background:var(--accent);color:#fff}
 </style>
 </head>
 <body>
 <header>
-  <h1>ブラジル株 MA スクリーナー</h1>
+  <h1 id="title">MA スクリーナー</h1>
+  <div class="mk"><button data-mk="br">ブラジル株</button><button data-mk="jp">日本株</button></div>
   <div class="meta" id="meta">データを読み込み中…</div>
 </header>
 <main>
   <section class="card" id="filters">
     <h2>条件</h2>
     <div class="row">
-      <label class="f">投資可能額（R$）<input type="number" id="budget" class="w" step="1000"></label>
+      <label class="f"><span id="lbBudget">投資可能額（R$）</span><input type="number" id="budget" class="w" step="1000"></label>
       <label class="f">売買単位（株）<input type="number" id="lot" step="1"></label>
-      <label class="f">最低売買代金（百万R$）<input type="number" id="minval" step="1"></label>
+      <label class="f"><span id="lbMinval">最低売買代金（百万R$）</span><input type="number" id="minval" step="1"></label>
     </div>
     <div class="row">
       <label class="f">ROE 下限（%）<span style="display:flex;gap:8px;align-items:center">
         <input type="checkbox" id="roeuse" style="width:20px;height:20px">
         <input type="number" id="roemin" step="1"></span></label>
-      <label class="f">ROA 下限（%）<span style="display:flex;gap:8px;align-items:center">
+      <label class="f" id="roaBox">ROA 下限（%）<span style="display:flex;gap:8px;align-items:center">
         <input type="checkbox" id="roause" style="width:20px;height:20px">
         <input type="number" id="roamin" step="0.5"></span></label>
     </div>
-    <p class="note" style="margin:-2px 0 8px">チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA は週1回更新。ROE＝自己資本に対する利益、ROA＝総資産に対する利益</p>
+    <p class="note" style="margin:-2px 0 8px" id="noteFin">チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA は週1回更新。ROE＝自己資本に対する利益、ROA＝総資産に対する利益</p>
     <table class="tf">
       <thead><tr><th>足</th><th>使う</th><th>MA期間</th><th>比較本数</th><th>角度 下限</th><th>上限</th></tr></thead>
       <tbody id="tfrows"></tbody>
     </table>
-    <p class="note">ROE の * は銀行・保険などの金融株（ROE はふつうの会社と同じように比べられますが、ROA は資産が大きいぶん 1〜2% 程度と低く出ます）。角度＝MA の傾き（1本あたり 1% の上昇で 45°、横ばい 0°、下向きはマイナス）。「上向き」は下限 0、「下向き」は上限 0。空欄はその側を制限しません。設定はこの iPad に保存されます。</p>
+    <p class="note"><span id="noteStar">ROE の * は銀行・保険などの金融株（ROE はふつうの会社と同じように比べられますが、ROA は資産が大きいぶん 1〜2% 程度と低く出ます）。</span>角度＝MA の傾き（1本あたり 1% の上昇で 45°、横ばい 0°、下向きはマイナス）。「上向き」は下限 0、「下向き」は上限 0。空欄はその側を制限しません。設定はこの iPad に保存されます。</p>
   </section>
 
   <section class="card">
@@ -109,7 +113,7 @@ svg{width:100%;height:230px;display:block;touch-action:pan-y}
   <section class="card" id="chartcard" style="grid-column:1/-1">
     <div class="pick">
       <span class="big" id="selcode">—</span><span id="selname" class="meta"></span>
-      <input type="text" id="search" class="w" style="width:190px" list="codes" placeholder="銘柄コード（例 PETR4）" autocapitalize="characters">
+      <input type="text" id="search" class="w" style="width:190px" list="codes" placeholder="銘柄コード" autocapitalize="characters">
       <datalist id="codes"></datalist>
       <span class="legend"><i style="background:var(--close)"></i>終値<i style="background:var(--ma)"></i>MA</span>
     </div>
@@ -123,16 +127,26 @@ const TF = [
   {k:"w", name:"週足", per:13, look:3, show:104},
   {k:"m", name:"月足", per:12, look:3, show:120},
 ];
+const MK = {
+  br: {name:"ブラジル株", file:"data/all.json", key:"brsc", cur:"R$", budget:20000, bstep:1000, minval:5, valUnit:"百万R$",
+       roa:true, pdec:2, ex:"例 PETR4", src:"ヤフーファイナンスのデータ"},
+  jp: {name:"日本株", file:"data/jp.json", key:"jpsc", cur:"円", budget:1000000, bstep:100000, minval:1, valUnit:"億円",
+       roa:false, pdec:1, ex:"例 7203", src:"ヤフーファイナンスのデータ・東証の売買代金1日1億円以上の銘柄"},
+};
+let M = (()=>{ try{ return localStorage.getItem("mk") || "br"; }catch(e){ return "br"; } })();
+if(!MK[M]) M = "br";
+const CACHE = {};
 const DEF = {budget:20000, lot:100, minval:5, roeuse:false, roemin:10, roause:false, roamin:5,
   tf:{d:{use:false,per:25,look:5,lo:"",hi:""}, w:{use:false,per:13,look:3,lo:"",hi:""}, m:{use:false,per:12,look:3,lo:"",hi:""}},
   sort:{key:"val",dir:-1}, sel:null};
 let S = load(), DATA = null, ROWS = [];
 
 function load(){
-  try{ const s = JSON.parse(localStorage.getItem("brsc") || "null"); if(s) return Object.assign(structuredClone(DEF), s); }catch(e){}
-  return structuredClone(DEF);
+  const d = Object.assign(structuredClone(DEF), {budget: MK[M].budget, minval: MK[M].minval});
+  try{ const s = JSON.parse(localStorage.getItem(MK[M].key) || "null"); if(s) return Object.assign(d, s); }catch(e){}
+  return d;
 }
-function save(){ try{ localStorage.setItem("brsc", JSON.stringify(S)); }catch(e){} }
+function save(){ try{ localStorage.setItem(MK[M].key, JSON.stringify(S)); }catch(e){} }
 const num = v => (v === "" || v === null || v === undefined || isNaN(+v)) ? null : +v;
 
 // 単純移動平均と角度（パソコン版と同じ計算）
@@ -194,7 +208,7 @@ function recompute(){
     if(budget !== null && (s.p === null || s.p * lot > budget)) continue;
     if(minval !== null && (s.val === null || s.val < minval)) continue;
     if(S.roeuse && num(S.roemin) !== null && (s.roe === null || s.roe === undefined || s.roe < num(S.roemin))) continue;
-    if(S.roause && num(S.roamin) !== null && (s.roa === null || s.roa === undefined || s.roa < num(S.roamin))) continue;
+    if(MK[M].roa && S.roause && num(S.roamin) !== null && (s.roa === null || s.roa === undefined || s.roa < num(S.roamin))) continue;
     let ok = true;
     for(const t of TF){
       const c = S.tf[t.k]; if(!c.use) continue;
@@ -219,18 +233,19 @@ const COLS = [
 ];
 function fmt(v, d=1){ return v === null || v === undefined ? "–" : v.toFixed(d); }
 function sgn(v){ return v === null || v === undefined ? "" : (v > 0 ? "pos" : v < 0 ? "neg" : ""); }
+function cols(){ return COLS.filter(c => c.k !== "roa" || MK[M].roa); }
 function renderTable(){
   const th = document.querySelector("#res thead"), tb = document.querySelector("#res tbody");
-  th.innerHTML = "<tr>" + COLS.map(c => `<th data-k="${c.k}">${c.t}${S.sort.key===c.k ? (S.sort.dir>0?" ▲":" ▼") : ""}</th>`).join("") + "</tr>";
+  th.innerHTML = "<tr>" + cols().map(c => `<th data-k="${c.k}">${c.t}${S.sort.key===c.k ? (S.sort.dir>0?" ▲":" ▼") : ""}</th>`).join("") + "</tr>";
   th.querySelectorAll("th").forEach(h => h.addEventListener("click", () => {
     const k = h.dataset.k; S.sort = {key:k, dir: S.sort.key === k ? -S.sort.dir : (k === "c" ? 1 : -1)}; save(); recompute();
   }));
   document.getElementById("count").textContent = `${ROWS.length} 銘柄`;
   tb.innerHTML = ROWS.map(s => `<tr data-c="${s.c}" class="${s.c===S.sel?"sel":""}">
     <td><b>${s.c}</b><span class="nm">${s.n || ""}</span></td>
-    <td>${fmt(s.p,2)}</td><td class="${sgn(s.chg)}">${fmt(s.chg,2)}</td><td>${fmt(s.val,1)}</td>
+    <td>${fmt(s.p,MK[M].pdec)}</td><td class="${sgn(s.chg)}">${fmt(s.chg,2)}</td><td>${fmt(s.val,1)}</td>
     <td class="${sgn(s._a.d)}">${fmt(s._a.d)}</td><td class="${sgn(s._a.w)}">${fmt(s._a.w)}</td>
-    <td class="${sgn(s._a.m)}">${fmt(s._a.m)}</td><td class="${sgn(s.roe)}" title="${s.fin?"金融（銀行・保険など）":""}">${fmt(s.roe,1)}${s.fin?"*":""}</td><td class="${sgn(s.roa)}">${fmt(s.roa,1)}</td><td>${fmt(s.rsi,0)}</td></tr>`).join("");
+    <td class="${sgn(s._a.m)}">${fmt(s._a.m)}</td><td class="${sgn(s.roe)}" title="${s.fin?"金融（銀行・保険など）":""}">${fmt(s.roe,1)}${s.fin?"*":""}</td>${MK[M].roa ? `<td class="${sgn(s.roa)}">${fmt(s.roa,1)}</td>` : ""}<td>${fmt(s.rsi,0)}</td></tr>`).join("");
   tb.querySelectorAll("tr").forEach(r => r.addEventListener("click", () => {
     select(r.dataset.c); document.getElementById("chartcard").scrollIntoView({behavior:"smooth"});
   }));
@@ -241,7 +256,7 @@ function select(code){
   S.sel = code; save();
   document.querySelectorAll("#res tbody tr").forEach(r => r.classList.toggle("sel", r.dataset.c === code));
   document.getElementById("selcode").textContent = code;
-  document.getElementById("selname").textContent = `${s.n || ""}　終値 R$${fmt(s.p,2)}（${s.last}）　ROE ${fmt(s.roe,1)}%　ROA ${fmt(s.roa,1)}%`;
+  document.getElementById("selname").textContent = `${s.n || ""}　終値 ${MK[M].cur === "R$" ? "R$" + fmt(s.p,2) : fmt(s.p,1) + "円"}（${s.last}）　ROE ${fmt(s.roe,1)}%` + (MK[M].roa ? `　ROA ${fmt(s.roa,1)}%` : "");
   const box = document.getElementById("charts"); box.innerHTML = "";
   TF.forEach(t => {
     const per = +S.tf[t.k].per, ang = angle(s[t.k], per, +S.tf[t.k].look);
@@ -297,32 +312,66 @@ function drawChart(div, dates, close, ma, show){
 
 function bindBasics(){
   ["roeuse","roause"].forEach(id => {
-    const cb = document.getElementById(id); cb.checked = !!S[id];
+    const cb = document.getElementById(id);
     cb.addEventListener("change", () => { S[id] = cb.checked; save(); recompute(); });
   });
   ["budget","lot","minval","roemin","roamin"].forEach(id => {
-    const el = document.getElementById(id); el.value = S[id] ?? "";
+    const el = document.getElementById(id);
     el.addEventListener("input", () => { S[id] = el.value; save(); recompute(); });
   });
   const sr = document.getElementById("search");
   sr.addEventListener("change", () => { const c = sr.value.trim().toUpperCase(); if(c){ select(c); sr.value = ""; } });
 }
 
-async function init(){
-  bindBasics(); buildTfRows();
+function applyMarketUI(){
+  const m = MK[M];
+  document.title = `${m.name} MA スクリーナー`;
+  document.getElementById("title").textContent = `${m.name} MA スクリーナー`;
+  document.querySelectorAll(".mk button").forEach(b => b.classList.toggle("on", b.dataset.mk === M));
+  document.getElementById("lbBudget").textContent = `投資可能額（${m.cur}）`;
+  document.getElementById("budget").step = m.bstep;
+  document.getElementById("lbMinval").textContent = `最低売買代金（${m.valUnit}）`;
+  document.getElementById("roaBox").style.display = m.roa ? "" : "none";
+  document.getElementById("noteStar").style.display = m.roa ? "" : "none";
+  document.getElementById("noteFin").textContent = m.roa
+    ? "チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA は週1回更新。ROE＝自己資本に対する利益、ROA＝総資産に対する利益"
+    : "チェックを入れると、ROE がその値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE は週1回更新。ROE＝自己資本に対する利益";
+  document.getElementById("search").placeholder = `銘柄コード（${m.ex}）`;
+  ["budget","lot","minval","roemin","roamin"].forEach(id => { document.getElementById(id).value = S[id] ?? ""; });
+  ["roeuse","roause"].forEach(id => { document.getElementById(id).checked = !!S[id]; });
+}
+
+async function switchMarket(mk){
+  M = mk; try{ localStorage.setItem("mk", mk); }catch(e){}
+  S = load(); DATA = null; ROWS = [];
+  applyMarketUI(); buildTfRows();
+  document.querySelector("#res tbody").innerHTML = ""; document.getElementById("count").textContent = "";
+  document.getElementById("charts").innerHTML = ""; document.getElementById("selcode").textContent = "—";
+  document.getElementById("selname").textContent = "";
+  document.getElementById("meta").textContent = "データを読み込み中…";
   try{
-    const r = await fetch("data/all.json", {cache:"no-cache"});
-    if(!r.ok) throw new Error(r.status);
-    DATA = await r.json();
+    if(!CACHE[mk]){
+      const r = await fetch(MK[mk].file, {cache:"no-cache"});
+      if(!r.ok) throw new Error(r.status);
+      CACHE[mk] = await r.json();
+    }
+    if(M !== mk) return;
+    DATA = CACHE[mk];
   }catch(e){
     document.getElementById("meta").innerHTML = `<span class="err">データを読み込めませんでした（${e.message}）。夜の更新が終わっていない可能性があります。</span>`;
     return;
   }
   const lastD = DATA.dates.d[DATA.dates.d.length - 1];
-  document.getElementById("meta").textContent = `更新 ${DATA.updated}　最新の日足 ${lastD}　対象 ${DATA.stocks.length} 銘柄（ヤフーファイナンスのデータ）`;
+  document.getElementById("meta").textContent = `更新 ${DATA.updated}　最新の日足 ${lastD}　対象 ${DATA.stocks.length} 銘柄（${MK[M].src}）`;
   document.getElementById("codes").innerHTML = DATA.stocks.map(s => `<option value="${s.c}">${s.n || ""}</option>`).join("");
   recompute();
   select(S.sel && DATA.stocks.some(s => s.c === S.sel) ? S.sel : (ROWS[0] || DATA.stocks[0]).c);
+}
+
+function init(){
+  bindBasics();
+  document.querySelectorAll(".mk button").forEach(b => b.addEventListener("click", () => { if(b.dataset.mk !== M) switchMarket(b.dataset.mk); }));
+  switchMarket(M);
 }
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => S.sel && select(S.sel));
 init();
