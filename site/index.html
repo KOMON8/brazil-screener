@@ -131,7 +131,7 @@ const MK = {
   br: {name:"ブラジル株", file:"data/all.json", ohlc:"data/ohlc/br/", key:"brsc", cur:"R$", budget:20000, bstep:1000, minval:5, valUnit:"百万R$",
        roa:true, pdec:2, ex:"例 PETR4", src:"ヤフーファイナンスのデータ"},
   jp: {name:"日本株", file:"data/jp.json", ohlc:"data/ohlc/jp/", key:"jpsc", cur:"円", budget:1000000, bstep:100000, minval:1, valUnit:"億円",
-       roa:false, pdec:1, ex:"例 7203", src:"ヤフーファイナンスのデータ・東証の売買代金1日1億円以上の銘柄"},
+       roa:true, pdec:1, ex:"例 7203", src:"ヤフーファイナンスのデータ・東証の売買代金1日1億円以上の銘柄"},
 };
 let M = (()=>{ try{ return localStorage.getItem("mk") || "br"; }catch(e){ return "br"; } })();
 if(!MK[M]) M = "br";

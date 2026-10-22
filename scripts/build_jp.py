@@ -82,7 +82,7 @@ def main():
     core.HISTORY_PERIOD = "10y"
     prices = get_prices(target, "10y")
     print(f"10年分の株価を取得できた銘柄: {len(prices)}")
-    fund = fetch_fundamentals(list(prices), suffix=".T", cache_path=FUND_CACHE_JP, want_roa=False)
+    fund = fetch_fundamentals(list(prices), suffix=".T", cache_path=FUND_CACHE_JP, want_roa=True)
 
     dates, stocks = {}, []
     series = {c: {"d": df["Close"], "w": core.resample_close(df, "W-FRI"), "m": core.resample_close(df, "ME")}
@@ -107,6 +107,7 @@ def main():
             "atr": r2(tr.tail(14).mean() / last * 100) if last else None,
             "rsi": r2(core.rsi(cl).iloc[-1]),
             "roe": (fund.get(c) or {}).get("roe"),
+            "roa": (fund.get(c) or {}).get("roa"),
             "fin": info.get("sector", "") in FIN,
             "last": df.index[-1].strftime("%Y-%m-%d"),
             "d": aligned[c]["d"], "w": aligned[c]["w"], "m": aligned[c]["m"],
@@ -122,7 +123,8 @@ def main():
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(OUT_DIR, "meta_jp.json"), "w", encoding="utf-8") as f:
         json.dump({"updated": out["updated"], "listed": len(codes), "target": len(target), "stocks": len(stocks),
-                   "with_roe": sum(1 for s in stocks if s["roe"] is not None), "last_daily": dates["d"][-1],
+                   "with_roe": sum(1 for s in stocks if s["roe"] is not None),
+                   "with_roa": sum(1 for s in stocks if s["roa"] is not None), "last_daily": dates["d"][-1],
                    "size_mb": round(os.path.getsize(path) / 1e6, 2)}, f, ensure_ascii=False)
     print(f"書き出し: {path}（{os.path.getsize(path) / 1e6:.1f} MB、{len(stocks)} 銘柄）")
 
