@@ -17,7 +17,7 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import screener_core as core
-from build_data import r2, fetch_fundamentals, write_ohlc, BARS
+from build_data import r2, fetch_fundamentals, write_ohlc, div_fields, BARS
 
 OUT_DIR = os.path.join(HERE, "..", "site", "data")
 LIST_URLS = ("https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx",
@@ -108,6 +108,7 @@ def main():
             "rsi": r2(core.rsi(cl).iloc[-1]),
             "roe": (fund.get(c) or {}).get("roe"),
             "roa": (fund.get(c) or {}).get("roa"),
+            **div_fields(fund.get(c), last),
             "fin": info.get("sector", "") in FIN,
             "last": df.index[-1].strftime("%Y-%m-%d"),
             "d": aligned[c]["d"], "w": aligned[c]["w"], "m": aligned[c]["m"],
@@ -124,7 +125,8 @@ def main():
     with open(os.path.join(OUT_DIR, "meta_jp.json"), "w", encoding="utf-8") as f:
         json.dump({"updated": out["updated"], "listed": len(codes), "target": len(target), "stocks": len(stocks),
                    "with_roe": sum(1 for s in stocks if s["roe"] is not None),
-                   "with_roa": sum(1 for s in stocks if s["roa"] is not None), "last_daily": dates["d"][-1],
+                   "with_roa": sum(1 for s in stocks if s["roa"] is not None),
+                   "with_div": sum(1 for s in stocks if s["dy"] is not None), "last_daily": dates["d"][-1],
                    "size_mb": round(os.path.getsize(path) / 1e6, 2)}, f, ensure_ascii=False)
     print(f"書き出し: {path}（{os.path.getsize(path) / 1e6:.1f} MB、{len(stocks)} 銘柄）")
 

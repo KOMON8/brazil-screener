@@ -93,8 +93,11 @@ svg{width:100%;height:230px;display:block;touch-action:pan-y}
       <label class="f" id="roaBox">ROA 下限（%）<span style="display:flex;gap:8px;align-items:center">
         <input type="checkbox" id="roause" style="width:20px;height:20px">
         <input type="number" id="roamin" step="0.5"></span></label>
+      <label class="f">配当利回り 下限（%）<span style="display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="divuse" style="width:20px;height:20px">
+        <input type="number" id="divmin" step="0.5"></span></label>
     </div>
-    <p class="note" style="margin:-2px 0 8px" id="noteFin">チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA は週1回更新。ROE＝自己資本に対する利益、ROA＝総資産に対する利益</p>
+    <p class="note" style="margin:-2px 0 8px" id="noteFin">チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA・配当は週1回更新。配当利回り＝年間の1株配当÷株価。ROE＝自己資本に対する利益、ROA＝総資産に対する利益</p>
     <table class="tf">
       <thead><tr><th>足</th><th>使う</th><th>MA期間</th><th>比較本数</th><th>角度 下限</th><th>上限</th></tr></thead>
       <tbody id="tfrows"></tbody>
@@ -136,7 +139,7 @@ const MK = {
 let M = (()=>{ try{ return localStorage.getItem("mk") || "br"; }catch(e){ return "br"; } })();
 if(!MK[M]) M = "br";
 const CACHE = {};
-const DEF = {budget:20000, lot:100, minval:5, roeuse:false, roemin:10, roause:false, roamin:5,
+const DEF = {budget:20000, lot:100, minval:5, roeuse:false, roemin:10, roause:false, roamin:5, divuse:false, divmin:3,
   tf:{d:{use:false,per:25,look:5,lo:"",hi:""}, w:{use:false,per:13,look:3,lo:"",hi:""}, m:{use:false,per:12,look:3,lo:"",hi:""}},
   sort:{key:"val",dir:-1}, sel:null};
 let S = load(), DATA = null, ROWS = [];
@@ -208,6 +211,7 @@ function recompute(){
     if(budget !== null && (s.p === null || s.p * lot > budget)) continue;
     if(minval !== null && (s.val === null || s.val < minval)) continue;
     if(S.roeuse && num(S.roemin) !== null && (s.roe === null || s.roe === undefined || s.roe < num(S.roemin))) continue;
+    if(S.divuse && num(S.divmin) !== null && (s.dy === null || s.dy === undefined || s.dy < num(S.divmin))) continue;
     if(MK[M].roa && S.roause && num(S.roamin) !== null && (s.roa === null || s.roa === undefined || s.roa < num(S.roamin))) continue;
     let ok = true;
     for(const t of TF){
@@ -229,7 +233,7 @@ function recompute(){
 
 const COLS = [
   {k:"c", t:"銘柄"}, {k:"p", t:"終値"}, {k:"chg", t:"前日比%"}, {k:"val", t:"売買代金"},
-  {k:"a_d", t:"日足°"}, {k:"a_w", t:"週足°"}, {k:"a_m", t:"月足°"}, {k:"roe", t:"ROE%"}, {k:"roa", t:"ROA%"}, {k:"rsi", t:"RSI"},
+  {k:"a_d", t:"日足°"}, {k:"a_w", t:"週足°"}, {k:"a_m", t:"月足°"}, {k:"roe", t:"ROE%"}, {k:"roa", t:"ROA%"}, {k:"dy", t:"配当%"}, {k:"rsi", t:"RSI"},
 ];
 function fmt(v, d=1){ return v === null || v === undefined ? "–" : v.toFixed(d); }
 function sgn(v){ return v === null || v === undefined ? "" : (v > 0 ? "pos" : v < 0 ? "neg" : ""); }
@@ -245,7 +249,7 @@ function renderTable(){
     <td><b>${s.c}</b><span class="nm">${s.n || ""}</span></td>
     <td>${fmt(s.p,MK[M].pdec)}</td><td class="${sgn(s.chg)}">${fmt(s.chg,2)}</td><td>${fmt(s.val,1)}</td>
     <td class="${sgn(s._a.d)}">${fmt(s._a.d)}</td><td class="${sgn(s._a.w)}">${fmt(s._a.w)}</td>
-    <td class="${sgn(s._a.m)}">${fmt(s._a.m)}</td><td class="${sgn(s.roe)}" title="${s.fin?"金融（銀行・保険など）":""}">${fmt(s.roe,1)}${s.fin?"*":""}</td>${MK[M].roa ? `<td class="${sgn(s.roa)}">${fmt(s.roa,1)}</td>` : ""}<td>${fmt(s.rsi,0)}</td></tr>`).join("");
+    <td class="${sgn(s._a.m)}">${fmt(s._a.m)}</td><td class="${sgn(s.roe)}" title="${s.fin?"金融（銀行・保険など）":""}">${fmt(s.roe,1)}${s.fin?"*":""}</td>${MK[M].roa ? `<td class="${sgn(s.roa)}">${fmt(s.roa,1)}</td>` : ""}<td>${fmt(s.dy,2)}</td><td>${fmt(s.rsi,0)}</td></tr>`).join("");
   tb.querySelectorAll("tr").forEach(r => r.addEventListener("click", () => {
     select(r.dataset.c); document.getElementById("chartcard").scrollIntoView({behavior:"smooth"});
   }));
@@ -266,7 +270,9 @@ function select(code){
   S.sel = code; save();
   document.querySelectorAll("#res tbody tr").forEach(r => r.classList.toggle("sel", r.dataset.c === code));
   document.getElementById("selcode").textContent = code;
-  document.getElementById("selname").textContent = `${s.n || ""}　終値 ${MK[M].cur === "R$" ? "R$" + fmt(s.p,2) : fmt(s.p,1) + "円"}（${s.last}）　ROE ${fmt(s.roe,1)}%` + (MK[M].roa ? `　ROA ${fmt(s.roa,1)}%` : "");
+  document.getElementById("selname").textContent = `${s.n || ""}　終値 ${MK[M].cur === "R$" ? "R$" + fmt(s.p,2) : fmt(s.p,1) + "円"}（${s.last}）　ROE ${fmt(s.roe,1)}%` + (MK[M].roa ? `　ROA ${fmt(s.roa,1)}%` : "")
+    + (s.dps === null || s.dps === undefined ? "　配当 –" : s.dps === 0 ? "　無配" :
+       `　配当 ${MK[M].cur === "R$" ? "R$" + fmt(s.dps,2) : fmt(s.dps,1) + "円"}（利回り ${fmt(s.dy,2)}%${s.po !== null && s.po !== undefined ? "・配当性向 " + fmt(s.po,0) + "%" : ""}${s.ex ? "・権利落ち " + s.ex : ""}）`);
   const box = document.getElementById("charts"); box.innerHTML = "";
   const divs = {};
   TF.forEach(t => {
@@ -346,11 +352,11 @@ function drawChart(div, dates, close, ma, show, ohlc){
 }
 
 function bindBasics(){
-  ["roeuse","roause"].forEach(id => {
+  ["roeuse","roause","divuse"].forEach(id => {
     const cb = document.getElementById(id);
     cb.addEventListener("change", () => { S[id] = cb.checked; save(); recompute(); });
   });
-  ["budget","lot","minval","roemin","roamin"].forEach(id => {
+  ["budget","lot","minval","roemin","roamin","divmin"].forEach(id => {
     const el = document.getElementById(id);
     el.addEventListener("input", () => { S[id] = el.value; save(); recompute(); });
   });
@@ -369,11 +375,11 @@ function applyMarketUI(){
   document.getElementById("roaBox").style.display = m.roa ? "" : "none";
   document.getElementById("noteStar").style.display = m.roa ? "" : "none";
   document.getElementById("noteFin").textContent = m.roa
-    ? "チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA は週1回更新。ROE＝自己資本に対する利益、ROA＝総資産に対する利益"
+    ? "チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA・配当は週1回更新。配当利回り＝年間の1株配当÷株価。ROE＝自己資本に対する利益、ROA＝総資産に対する利益"
     : "チェックを入れると、ROE がその値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE は週1回更新。ROE＝自己資本に対する利益";
   document.getElementById("search").placeholder = `銘柄コード（${m.ex}）`;
-  ["budget","lot","minval","roemin","roamin"].forEach(id => { document.getElementById(id).value = S[id] ?? ""; });
-  ["roeuse","roause"].forEach(id => { document.getElementById(id).checked = !!S[id]; });
+  ["budget","lot","minval","roemin","roamin","divmin"].forEach(id => { document.getElementById(id).value = S[id] ?? ""; });
+  ["roeuse","roause","divuse"].forEach(id => { document.getElementById(id).checked = !!S[id]; });
 }
 
 async function switchMarket(mk){

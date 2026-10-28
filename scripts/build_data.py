@@ -60,6 +60,18 @@ def write_ohlc(prices, dirpath, dec=2):
     print(f"ローソク足: {dirpath}（{len(prices)} 銘柄）")
 
 
+def div_fields(f, price):
+    """配当：dy＝配当利回り%、dps＝年間1株配当、po＝配当性向%、ex＝権利落ち日"""
+    f = f or {}
+    d = f.get("div")
+    if d is None:
+        return {"dy": None, "dps": None, "po": None, "ex": None}
+    dy = r2(d / price * 100) if price else None
+    if dy is not None and dy > 30:          # 特別配当などで異常に高いものは参考外
+        dy = None
+    return {"dy": dy, "dps": round(d, 2), "po": f.get("po"), "ex": f.get("ex")}
+
+
 def fetch_fundamentals(codes, suffix=".SA", cache_path=None, want_roa=True):
     """ROE などの財務の数字（ヤフーの銘柄情報）。前回の記録が新しい銘柄は取り直さない"""
     import time
@@ -74,7 +86,7 @@ def fetch_fundamentals(codes, suffix=".SA", cache_path=None, want_roa=True):
         except Exception:
             cache = {}
     todo = [c for c in codes
-            if c not in cache or (want_roa and "roa" not in cache[c]) or (today - dt.date.fromisoformat(cache[c].get("checked", "2000-01-01"))).days >= FUND_DAYS]
+            if c not in cache or (want_roa and "roa" not in cache[c]) or "div" not in cache[c] or (today - dt.date.fromisoformat(cache[c].get("checked", "2000-01-01"))).days >= FUND_DAYS]
     print(f"財務の数字を取得中（{len(todo)} 銘柄、残りは記録を使う）...")
     def reset_session(strategy=None):
         """ヤフーの認証（crumb / cookie）を取り直す"""
@@ -120,9 +132,19 @@ def fetch_fundamentals(codes, suffix=".SA", cache_path=None, want_roa=True):
             roa = info.get("returnOnAssets")
             rec["roa"] = r2(roa * 100) if isinstance(roa, (int, float)) else None
             rec["sector"] = info.get("sector") or ""
+            div = info.get("dividendRate")
+            if not isinstance(div, (int, float)):
+                div = info.get("trailingAnnualDividendRate")
+            rec["div"] = round(float(div), 4) if isinstance(div, (int, float)) and div > 0 else 0.0   # 年間の1株配当（0＝無配）
+            po = info.get("payoutRatio")
+            rec["po"] = r2(po * 100) if isinstance(po, (int, float)) else None                      # 配当性向（%）
+            ex = info.get("exDividendDate")
+            rec["ex"] = dt.datetime.fromtimestamp(ex, dt.timezone.utc).strftime("%Y-%m-%d") if isinstance(ex, (int, float)) and ex > 0 else None
             fails = 0 if (roe is not None or info.get("shortName")) else fails + 1
         except Exception as e:
             fails += 1
+            old = {k: v for k, v in (cache.get(c) or {}).items() if k not in ("checked", "err", "div")}
+            rec.update(old)                   # 失敗しても前回の ROE などは残す
             rec["err"] = str(e)[:80]
             if fails == 1:
                 print("  エラー:", c, str(e)[:120])
@@ -183,6 +205,7 @@ def main():
             "rsi": r2(core.rsi(cl).iloc[-1]),
             "roe": (fund.get(c) or {}).get("roe"),
             "roa": (fund.get(c) or {}).get("roa"),
+            **div_fields(fund.get(c), last),
             "fin": ((fund.get(c) or {}).get("sector") or info.get("sector") or "") == "Financial Services",
             "last": df.index[-1].strftime("%Y-%m-%d"),
             "d": aligned[c]["d"], "w": aligned[c]["w"], "m": aligned[c]["m"],
@@ -201,6 +224,7 @@ def main():
         json.dump({"updated": out["updated"], "tickers": len(codes), "stocks": len(stocks),
                    "with_roe": sum(1 for s in stocks if s["roe"] is not None),
                    "with_roa": sum(1 for s in stocks if s["roa"] is not None),
+                   "with_div": sum(1 for s in stocks if s["dy"] is not None),
                    "last_daily": dates["d"][-1], "size_mb": round(os.path.getsize(path) / 1e6, 2)}, f, ensure_ascii=False)
 
 
