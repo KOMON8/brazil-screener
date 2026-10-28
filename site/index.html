@@ -103,7 +103,7 @@ svg{width:100%;height:230px;display:block;touch-action:pan-y}
         <input type="number" id="rbmin" step="5"></span></label>
       <label class="f">急落の回数 下限（回）<input type="number" id="rbnmin" step="1"></label>
     </div>
-    <p class="note" style="margin:-2px 0 8px">戻り率＝過去約2年で前日比 −3% 以下に急落した日の終値で買ったとして、翌日〜2日後のうちに高値が +1% 以上を付けた割合。回数が少ないと当てにならないので、回数の下限（例 5回）と合わせて使ってください。</p>
+    <p class="note" style="margin:-2px 0 8px">戻り率＝過去約2年で前日比 −5% 以下に急落した日の終値で買ったとして、翌日〜2日後のうちに高値が +3% 以上を付けた割合。回数が少ないと当てにならないので、回数の下限（例 3〜5回）と合わせて使ってください。</p>
     <p class="note" style="margin:-2px 0 8px" id="noteFin">チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA・配当は週1回更新。配当利回り＝年間の1株配当÷株価。ROE＝自己資本に対する利益、ROA＝総資産に対する利益</p>
     <table class="tf">
       <thead><tr><th>足</th><th>使う</th><th>MA期間</th><th>比較本数</th><th>角度 下限</th><th>上限</th></tr></thead>
@@ -146,7 +146,7 @@ const MK = {
 let M = (()=>{ try{ return localStorage.getItem("mk") || "br"; }catch(e){ return "br"; } })();
 if(!MK[M]) M = "br";
 const CACHE = {};
-const DEF = {budget:20000, lot:100, minval:5, roeuse:false, roemin:10, roause:false, roamin:5, divuse:false, divmin:3, rbuse:false, rbmin:70, rbnmin:5,
+const DEF = {budget:20000, lot:100, minval:5, roeuse:false, roemin:10, roause:false, roamin:5, divuse:false, divmin:3, rbuse:false, rbmin:60, rbnmin:3,
   tf:{d:{use:false,per:25,look:5,lo:"",hi:""}, w:{use:false,per:13,look:3,lo:"",hi:""}, m:{use:false,per:12,look:3,lo:"",hi:""}},
   sort:{key:"val",dir:-1}, sel:null};
 let S = load(), DATA = null, ROWS = [];
