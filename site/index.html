@@ -97,6 +97,13 @@ svg{width:100%;height:230px;display:block;touch-action:pan-y}
         <input type="checkbox" id="divuse" style="width:20px;height:20px">
         <input type="number" id="divmin" step="0.5"></span></label>
     </div>
+    <div class="row">
+      <label class="f">急落後の戻り率 下限（%）<span style="display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="rbuse" style="width:20px;height:20px">
+        <input type="number" id="rbmin" step="5"></span></label>
+      <label class="f">急落の回数 下限（回）<input type="number" id="rbnmin" step="1"></label>
+    </div>
+    <p class="note" style="margin:-2px 0 8px">戻り率＝過去約2年で前日比 −3% 以下に急落した日の終値で買ったとして、翌日〜2日後のうちに高値が +1% 以上を付けた割合。回数が少ないと当てにならないので、回数の下限（例 5回）と合わせて使ってください。</p>
     <p class="note" style="margin:-2px 0 8px" id="noteFin">チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA・配当は週1回更新。配当利回り＝年間の1株配当÷株価。ROE＝自己資本に対する利益、ROA＝総資産に対する利益</p>
     <table class="tf">
       <thead><tr><th>足</th><th>使う</th><th>MA期間</th><th>比較本数</th><th>角度 下限</th><th>上限</th></tr></thead>
@@ -139,7 +146,7 @@ const MK = {
 let M = (()=>{ try{ return localStorage.getItem("mk") || "br"; }catch(e){ return "br"; } })();
 if(!MK[M]) M = "br";
 const CACHE = {};
-const DEF = {budget:20000, lot:100, minval:5, roeuse:false, roemin:10, roause:false, roamin:5, divuse:false, divmin:3,
+const DEF = {budget:20000, lot:100, minval:5, roeuse:false, roemin:10, roause:false, roamin:5, divuse:false, divmin:3, rbuse:false, rbmin:70, rbnmin:5,
   tf:{d:{use:false,per:25,look:5,lo:"",hi:""}, w:{use:false,per:13,look:3,lo:"",hi:""}, m:{use:false,per:12,look:3,lo:"",hi:""}},
   sort:{key:"val",dir:-1}, sel:null};
 let S = load(), DATA = null, ROWS = [];
@@ -212,6 +219,8 @@ function recompute(){
     if(minval !== null && (s.val === null || s.val < minval)) continue;
     if(S.roeuse && num(S.roemin) !== null && (s.roe === null || s.roe === undefined || s.roe < num(S.roemin))) continue;
     if(S.divuse && num(S.divmin) !== null && (s.dy === null || s.dy === undefined || s.dy < num(S.divmin))) continue;
+    if(S.rbuse && num(S.rbmin) !== null && (s.rb === null || s.rb === undefined || s.rb < num(S.rbmin))) continue;
+    if(S.rbuse && num(S.rbnmin) !== null && (s.rbn ?? 0) < num(S.rbnmin)) continue;
     if(MK[M].roa && S.roause && num(S.roamin) !== null && (s.roa === null || s.roa === undefined || s.roa < num(S.roamin))) continue;
     let ok = true;
     for(const t of TF){
@@ -234,6 +243,7 @@ function recompute(){
 const COLS = [
   {k:"c", t:"銘柄"}, {k:"p", t:"終値"}, {k:"chg", t:"前日比%"}, {k:"val", t:"売買代金"},
   {k:"a_d", t:"日足°"}, {k:"a_w", t:"週足°"}, {k:"a_m", t:"月足°"}, {k:"roe", t:"ROE%"}, {k:"roa", t:"ROA%"}, {k:"dy", t:"配当%"}, {k:"rsi", t:"RSI"},
+  {k:"rb", t:"戻り%"}, {k:"rbn", t:"回数"},
 ];
 function fmt(v, d=1){ return v === null || v === undefined ? "–" : v.toFixed(d); }
 function sgn(v){ return v === null || v === undefined ? "" : (v > 0 ? "pos" : v < 0 ? "neg" : ""); }
@@ -249,7 +259,7 @@ function renderTable(){
     <td><b>${s.c}</b><span class="nm">${s.n || ""}</span></td>
     <td>${fmt(s.p,MK[M].pdec)}</td><td class="${sgn(s.chg)}">${fmt(s.chg,2)}</td><td>${fmt(s.val,1)}</td>
     <td class="${sgn(s._a.d)}">${fmt(s._a.d)}</td><td class="${sgn(s._a.w)}">${fmt(s._a.w)}</td>
-    <td class="${sgn(s._a.m)}">${fmt(s._a.m)}</td><td class="${sgn(s.roe)}" title="${s.fin?"金融（銀行・保険など）":""}">${fmt(s.roe,1)}${s.fin?"*":""}</td>${MK[M].roa ? `<td class="${sgn(s.roa)}">${fmt(s.roa,1)}</td>` : ""}<td>${fmt(s.dy,2)}</td><td>${fmt(s.rsi,0)}</td></tr>`).join("");
+    <td class="${sgn(s._a.m)}">${fmt(s._a.m)}</td><td class="${sgn(s.roe)}" title="${s.fin?"金融（銀行・保険など）":""}">${fmt(s.roe,1)}${s.fin?"*":""}</td>${MK[M].roa ? `<td class="${sgn(s.roa)}">${fmt(s.roa,1)}</td>` : ""}<td>${fmt(s.dy,2)}</td><td>${fmt(s.rsi,0)}</td><td>${fmt(s.rb,0)}</td><td>${s.rbn ?? "–"}</td></tr>`).join("");
   tb.querySelectorAll("tr").forEach(r => r.addEventListener("click", () => {
     select(r.dataset.c); document.getElementById("chartcard").scrollIntoView({behavior:"smooth"});
   }));
@@ -272,7 +282,8 @@ function select(code){
   document.getElementById("selcode").textContent = code;
   document.getElementById("selname").textContent = `${s.n || ""}　終値 ${MK[M].cur === "R$" ? "R$" + fmt(s.p,2) : fmt(s.p,1) + "円"}（${s.last}）　ROE ${fmt(s.roe,1)}%` + (MK[M].roa ? `　ROA ${fmt(s.roa,1)}%` : "")
     + (s.dps === null || s.dps === undefined ? "　配当 –" : s.dps === 0 ? "　無配" :
-       `　配当 ${MK[M].cur === "R$" ? "R$" + fmt(s.dps,2) : fmt(s.dps,1) + "円"}（利回り ${fmt(s.dy,2)}%${s.po !== null && s.po !== undefined ? "・配当性向 " + fmt(s.po,0) + "%" : ""}${s.ex ? "・権利落ち " + s.ex : ""}）`);
+       `　配当 ${MK[M].cur === "R$" ? "R$" + fmt(s.dps,2) : fmt(s.dps,1) + "円"}（利回り ${fmt(s.dy,2)}%${s.po !== null && s.po !== undefined ? "・配当性向 " + fmt(s.po,0) + "%" : ""}${s.ex ? "・権利落ち " + s.ex : ""}）`)
+    + (s.rbn ? `　急落後の戻り：${s.rbn}回中 翌日 ${fmt(s.rb1,0)}%・2日以内 ${fmt(s.rb,0)}%（戻り幅の中央値 ${fmt(s.rbw,1)}%）` : "　急落後の戻り：急落なし");
   const box = document.getElementById("charts"); box.innerHTML = "";
   const divs = {};
   TF.forEach(t => {
@@ -352,11 +363,11 @@ function drawChart(div, dates, close, ma, show, ohlc){
 }
 
 function bindBasics(){
-  ["roeuse","roause","divuse"].forEach(id => {
+  ["roeuse","roause","divuse","rbuse"].forEach(id => {
     const cb = document.getElementById(id);
     cb.addEventListener("change", () => { S[id] = cb.checked; save(); recompute(); });
   });
-  ["budget","lot","minval","roemin","roamin","divmin"].forEach(id => {
+  ["budget","lot","minval","roemin","roamin","divmin","rbmin","rbnmin"].forEach(id => {
     const el = document.getElementById(id);
     el.addEventListener("input", () => { S[id] = el.value; save(); recompute(); });
   });
@@ -378,8 +389,8 @@ function applyMarketUI(){
     ? "チェックを入れると、その値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE・ROA・配当は週1回更新。配当利回り＝年間の1株配当÷株価。ROE＝自己資本に対する利益、ROA＝総資産に対する利益"
     : "チェックを入れると、ROE がその値以上の銘柄だけ残します（データがない銘柄は外れます）。ROE は週1回更新。ROE＝自己資本に対する利益";
   document.getElementById("search").placeholder = `銘柄コード（${m.ex}）`;
-  ["budget","lot","minval","roemin","roamin","divmin"].forEach(id => { document.getElementById(id).value = S[id] ?? ""; });
-  ["roeuse","roause","divuse"].forEach(id => { document.getElementById(id).checked = !!S[id]; });
+  ["budget","lot","minval","roemin","roamin","divmin","rbmin","rbnmin"].forEach(id => { document.getElementById(id).value = S[id] ?? ""; });
+  ["roeuse","roause","divuse","rbuse"].forEach(id => { document.getElementById(id).checked = !!S[id]; });
 }
 
 async function switchMarket(mk){

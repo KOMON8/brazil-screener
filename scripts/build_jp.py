@@ -17,7 +17,7 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import screener_core as core
-from build_data import r2, fetch_fundamentals, write_ohlc, div_fields, BARS
+from build_data import r2, fetch_fundamentals, write_ohlc, div_fields, rebound_fields, BARS
 
 OUT_DIR = os.path.join(HERE, "..", "site", "data")
 LIST_URLS = ("https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx",
@@ -109,6 +109,7 @@ def main():
             "roe": (fund.get(c) or {}).get("roe"),
             "roa": (fund.get(c) or {}).get("roa"),
             **div_fields(fund.get(c), last),
+            **rebound_fields(df),
             "fin": info.get("sector", "") in FIN,
             "last": df.index[-1].strftime("%Y-%m-%d"),
             "d": aligned[c]["d"], "w": aligned[c]["w"], "m": aligned[c]["m"],

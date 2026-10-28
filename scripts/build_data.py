@@ -60,6 +60,36 @@ def write_ohlc(prices, dirpath, dec=2):
     print(f"ローソク足: {dirpath}（{len(prices)} 銘柄）")
 
 
+RB_DROP = -3.0     # 急落日とみなす前日比（%以下）
+RB_GAIN = 1.0      # 買値（急落日の終値）からこれ以上（%）高い値を付けたら「戻った」
+RB_DAYS = 2        # 急落日の翌日から何日以内に戻ったかを見る
+RB_LOOK = 500      # 過去何営業日（約2年）を対象にするか
+
+
+def rebound_fields(df):
+    """急落後の戻り：過去約2年で前日比 RB_DROP% 以下だった日の終値で買ったとして、
+    翌日（rb1）・RB_DAYS 日以内（rb）に高値が RB_GAIN% 以上上回った割合、回数（rbn）、平均の最大戻り幅（rbw）"""
+    cl, hi = df["Close"].values, df["High"].values
+    n = len(cl)
+    ev1 = ev2 = 0
+    gains = []
+    for i in range(max(1, n - RB_LOOK), n - RB_DAYS):
+        c0, cp = cl[i], cl[i - 1]
+        if not (c0 > 0 and cp > 0) or (c0 / cp - 1) * 100 > RB_DROP:
+            continue
+        hs = [h for h in hi[i + 1:i + 1 + RB_DAYS] if h == h]
+        if len(hs) < RB_DAYS:
+            continue
+        g = (max(hs) / c0 - 1) * 100
+        gains.append(g)
+        ev1 += (hs[0] / c0 - 1) * 100 >= RB_GAIN
+        ev2 += g >= RB_GAIN
+    k = len(gains)
+    if not k:
+        return {"rbn": 0, "rb": None, "rb1": None, "rbw": None}
+    return {"rbn": k, "rb": round(ev2 / k * 100), "rb1": round(ev1 / k * 100), "rbw": r2(float(np.median(gains)))}
+
+
 def div_fields(f, price):
     """配当：dy＝配当利回り%、dps＝年間1株配当、po＝配当性向%、ex＝権利落ち日"""
     f = f or {}
@@ -206,6 +236,7 @@ def main():
             "roe": (fund.get(c) or {}).get("roe"),
             "roa": (fund.get(c) or {}).get("roa"),
             **div_fields(fund.get(c), last),
+            **rebound_fields(df),
             "fin": ((fund.get(c) or {}).get("sector") or info.get("sector") or "") == "Financial Services",
             "last": df.index[-1].strftime("%Y-%m-%d"),
             "d": aligned[c]["d"], "w": aligned[c]["w"], "m": aligned[c]["m"],
